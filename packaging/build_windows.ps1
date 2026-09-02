@@ -15,7 +15,8 @@
 [CmdletBinding()]
 param(
     [string]$Python = "python",
-    [switch]$SkipIcon
+    [switch]$SkipIcon,
+    [switch]$SkipFolder
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,16 +45,31 @@ if (-not $SkipIcon) {
 }
 
 # 3. Freeze --------------------------------------------------------------------
-Write-Host "==> running PyInstaller" -ForegroundColor Cyan
+Write-Host "==> running PyInstaller (one file)" -ForegroundColor Cyan
 & $VenvPython -m PyInstaller (Join-Path $Root "packaging\CheckMod.spec") --noconfirm --clean
 
+if (-not $SkipFolder) {
+    Write-Host "==> running PyInstaller (one folder)" -ForegroundColor Cyan
+    & $VenvPython -m PyInstaller (Join-Path $Root "packaging\CheckModFolder.spec") `
+        --noconfirm --clean --distpath (Join-Path $Root "dist-folder")
+}
+
 $Exe = Join-Path $Root "dist\CheckMod.exe"
-if (Test-Path $Exe) {
-    $SizeMb = [math]::Round((Get-Item $Exe).Length / 1MB, 1)
-    Write-Host ""
-    Write-Host "==> done: $Exe ($SizeMb MB)" -ForegroundColor Green
-    Write-Host "    Copy it anywhere and double-click. No installation required."
-} else {
+if (-not (Test-Path $Exe)) {
     Write-Error "Build finished but $Exe was not produced."
     exit 1
 }
+
+$SizeMb = [math]::Round((Get-Item $Exe).Length / 1MB, 1)
+$Hash = (Get-FileHash $Exe -Algorithm SHA256).Hash.ToLower()
+Write-Host ""
+Write-Host "==> one file:   $Exe ($SizeMb MB)" -ForegroundColor Green
+Write-Host "    SHA256: $Hash"
+
+$Folder = Join-Path $Root "dist-folder\CheckMod"
+if (Test-Path $Folder) {
+    Write-Host "==> one folder: $Folder" -ForegroundColor Green
+    Write-Host "    Preferred on managed machines: it does not extract itself to %TEMP%."
+}
+Write-Host ""
+Write-Host "    Neither layout needs installation or administrator rights."

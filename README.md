@@ -70,10 +70,17 @@ are ever requested**, so it never needs an IT ticket.
 
 ## Quick start
 
-### 1. Get the executable
+### 1. Get the app
 
-Download `CheckMod.exe` from the [Releases](../../releases) page, or build it
-yourself in one command — see [Building the executable](#building-the-executable).
+From the [Releases](../../releases) page:
+
+| Download | Use it when |
+|---|---|
+| **`CheckMod-folder.zip`** | **Recommended on a managed work machine.** Unzip anywhere, run the `CheckMod.exe` inside. Extracts nothing at runtime, so it gives heuristic antivirus far less to object to, and starts instantly. |
+| `CheckMod.exe` | You want a single file and your machine is not locked down. |
+| `SHA256SUMS.txt` | Your IT team wants to allow-list the exact build. |
+
+Or build it yourself in one command — see [Building the executable](#building-the-executable).
 
 ### 2. Put it somewhere you own
 
@@ -85,8 +92,14 @@ an administrator.
 
 The tutorial opens on the first run. That's the whole setup.
 
-> **First launch takes a second or two.** A single-file build unpacks itself
-> into your temporary folder before starting. Later launches are instant.
+> **First launch of the single-file build takes a second or two** while it
+> unpacks itself into your temporary folder. The folder distribution starts
+> immediately.
+
+> **Windows may show a SmartScreen prompt** for any new unsigned executable —
+> it is a reputation check, not a malware verdict. Click *More info → Run
+> anyway*. [docs/IT-APPROVAL.md](docs/IT-APPROVAL.md) is a one-pager for
+> whoever approves software on your machines.
 
 ### 4. Use it
 
@@ -286,6 +299,7 @@ CheckModApp/
 | **[docs/TUTORIAL.md](docs/TUTORIAL.md)** | Step-by-step usage guide, the same content as the in-app walkthrough plus the details it leaves out |
 | **[docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md)** | Every setting, the full `settings.json` reference, theming, and how to roll out a team-wide preset |
 | **[docs/PRIVACY.md](docs/PRIVACY.md)** | The privacy and security statement, written for an IT or security reviewer |
+| **[docs/IT-APPROVAL.md](docs/IT-APPROVAL.md)** | One page to hand to IT: what it touches, why an antivirus warning may appear, and how to verify every claim |
 | **[docs/BUILD.md](docs/BUILD.md)** | Building, CI, code signing, antivirus false positives |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Module map, data flow, and how to extend the app |
 | **[docs/FAQ.md](docs/FAQ.md)** | Common questions and troubleshooting |

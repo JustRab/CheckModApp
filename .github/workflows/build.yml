@@ -1,7 +1,11 @@
 name: Build Windows executable
 
-# Produces the portable CheckMod.exe that users download. PyInstaller cannot
+# Produces the two distributions users download. PyInstaller cannot
 # cross-compile, so this must run on a Windows runner.
+#
+#   CheckMod.exe          one file, convenient, self-extracts to %TEMP%
+#   CheckMod-folder.zip   one folder, corporate-friendly, no self-extraction
+#   SHA256SUMS.txt        so IT can allow-list by hash instead of by exception
 on:
   push:
     # Match both tagging conventions: "v1.0.0" and a bare "1.0.0".
@@ -37,31 +41,76 @@ jobs:
           python -m pip install pytest
           python -m pytest tests/ -q --ignore=tests/test_gui_smoke.py
 
-      - name: Build the portable executable
+      - name: Build the one-file executable
         run: python -m PyInstaller packaging/CheckMod.spec --noconfirm --clean
 
-      - name: Verify the executable exists and report its size
+      - name: Build the one-folder distribution
+        run: >
+          python -m PyInstaller packaging/CheckModFolder.spec
+          --noconfirm --clean --distpath dist-folder
+
+      # Signing removes the SmartScreen prompt and most heuristic antivirus
+      # flags. It runs only when an organisation has supplied a certificate,
+      # so forks and unsigned builds still work unchanged.
+      - name: Sign the executables
+        if: ${{ secrets.WINDOWS_CERT_PFX_BASE64 != '' }}
+        shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
+            -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1
+          foreach ($target in @("dist\CheckMod.exe", "dist-folder\CheckMod\CheckMod.exe")) {
+            & $signtool.FullName sign /f $pfx /p $env:PFX_PASSWORD `
+              /tr http://timestamp.digicert.com /td sha256 /fd sha256 $target
+          }
+          Remove-Item $pfx -Force
+
+      - name: Package the one-folder distribution
+        shell: pwsh
+        run: Compress-Archive -Path dist-folder\CheckMod -DestinationPath dist\CheckMod-folder.zip
+
+      - name: Publish checksums
         shell: pwsh
         run: |
-          $exe = "dist/CheckMod.exe"
-          if (-not (Test-Path $exe)) { throw "CheckMod.exe was not produced" }
-          "{0:N1} MB" -f ((Get-Item $exe).Length / 1MB)
+          $lines = foreach ($file in @("dist\CheckMod.exe", "dist\CheckMod-folder.zip")) {
+            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+            $size = "{0:N1} MB" -f ((Get-Item $file).Length / 1MB)
+            "$hash  $(Split-Path $file -Leaf)  ($size)"
+          }
+          $lines | Tee-Object -FilePath dist\SHA256SUMS.txt
 
-      - name: Upload the build artifact
+      - name: Upload the build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: CheckMod-windows-portable
-          path: dist/CheckMod.exe
+          path: |
+            dist/CheckMod.exe
+            dist/CheckMod-folder.zip
+            dist/SHA256SUMS.txt
           if-no-files-found: error
 
-      - name: Attach the executable to the release
+      - name: Attach the build to the release
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          files="dist/CheckMod.exe dist/CheckMod-folder.zip dist/SHA256SUMS.txt"
           gh release create "${GITHUB_REF_NAME}" \
             --title "CheckMod ${GITHUB_REF_NAME}" \
-            --notes "Portable build. Download CheckMod.exe, copy it anywhere and double-click - no installation and no administrator rights required." \
-            dist/CheckMod.exe \
-          || gh release upload "${GITHUB_REF_NAME}" dist/CheckMod.exe --clobber
+            --notes "Portable build - no installation and no administrator rights required.
+
+          * **CheckMod.exe** - one file. Copy it anywhere and double-click.
+          * **CheckMod-folder.zip** - one folder. Preferred on managed corporate
+            machines: it does not extract itself to %TEMP% at launch, which is the
+            behaviour heuristic antivirus most often flags. Unzip and run the exe inside.
+          * **SHA256SUMS.txt** - hashes, so IT can allow-list the exact build.
+
+          See docs/IT-APPROVAL.md for the summary an IT or security reviewer needs." \
+            $files \
+          || gh release upload "${GITHUB_REF_NAME}" $files --clobber

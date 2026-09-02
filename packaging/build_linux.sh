@@ -20,9 +20,14 @@ echo "==> CheckMod build ($ROOT)"
 echo "==> generating icon"
 "$VENV/bin/python" tools/make_icon.py
 
-echo "==> running PyInstaller"
+echo "==> running PyInstaller (one file)"
 "$VENV/bin/python" -m PyInstaller packaging/CheckMod.spec --noconfirm --clean
 
+echo "==> running PyInstaller (one folder)"
+"$VENV/bin/python" -m PyInstaller packaging/CheckModFolder.spec \
+    --noconfirm --clean --distpath dist-folder
+
 echo
-echo "==> done: $ROOT/dist/CheckMod"
+echo "==> done"
 ls -lh "$ROOT/dist/CheckMod"
+ls -lh "$ROOT/dist-folder/CheckMod/CheckMod"

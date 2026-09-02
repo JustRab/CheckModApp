@@ -4,6 +4,49 @@ All notable changes to CheckMod are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] — 2026-09-02
+
+### Fixed
+
+- **The title bar was clipped on scaled displays.** Its height was hard-coded
+  to 34 px, but PyInstaller marks the frozen executable DPI-aware, so on a
+  display at 150% scaling Tk renders the 11 pt title at ~27 px and the bar had
+  no room for it. At 125% it landed exactly on the boundary, which is why the
+  clipping looked intermittent. The bar, its buttons, the mode chip and the
+  resize grip are now all sized from live font metrics, so they fit at every
+  display scaling and at every *Text scale* setting.
+- **The title bar only repainted by accident.** Its canvas had no `<Configure>`
+  binding, so it kept whatever it had drawn before it was first laid out —
+  and `winfo_height()` returns `1` (which is truthy) at that point, so the
+  `or HEIGHT` fallback never fired and everything was drawn at y≈0. It only
+  looked right once an unrelated repaint happened to correct it, which is why
+  resizing or changing the theme "fixed" it.
+- **The tutorial covered the title bar**, so the window could not be moved,
+  pinned or closed while the walkthrough was open. The overlay now covers the
+  body only, and its own header can also drag the window.
+
+### Added
+
+- **One-folder distribution** (`CheckMod-folder.zip`) alongside the single
+  executable. It extracts nothing to `%TEMP%` at launch — the behaviour
+  heuristic antivirus most often flags on PyInstaller binaries — and starts
+  instantly. Recommended for managed corporate machines.
+- **`SHA256SUMS.txt`** published with every release so IT can allow-list an
+  exact build instead of granting a blanket exception.
+- **Optional code signing in CI**, active when a repository provides
+  `WINDOWS_CERT_PFX_BASE64` and `WINDOWS_CERT_PASSWORD`; skipped otherwise.
+- **[docs/IT-APPROVAL.md](docs/IT-APPROVAL.md)** — a one-page summary for
+  whoever approves software on corporate machines: what the app touches, why
+  a warning may appear, and how to verify each claim.
+
+### Changed
+
+- Both PyInstaller specs now share `packaging/build_config.py`, so the exclude
+  list — a privacy guarantee, not just a size optimisation — cannot drift
+  between the two build layouts.
+- The release workflow triggers on bare semver tags (`1.0.0`) as well as
+  `v`-prefixed ones.
+
 ## [1.0.0] — 2026-09-02
 
 First release.
