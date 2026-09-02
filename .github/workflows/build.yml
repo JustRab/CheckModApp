@@ -19,6 +19,11 @@ jobs:
   build:
     name: CheckMod.exe
     runs-on: windows-latest
+    env:
+      # The `secrets` context is not available in a step-level `if`, so the
+      # presence of a signing certificate is surfaced here as a plain string
+      # the condition can read.
+      HAS_SIGNING_CERT: ${{ secrets.WINDOWS_CERT_PFX_BASE64 != '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +58,7 @@ jobs:
       # flags. It runs only when an organisation has supplied a certificate,
       # so forks and unsigned builds still work unchanged.
       - name: Sign the executables
-        if: ${{ secrets.WINDOWS_CERT_PFX_BASE64 != '' }}
+        if: env.HAS_SIGNING_CERT == 'true'
         shell: pwsh
         env:
           PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}

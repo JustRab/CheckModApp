@@ -39,6 +39,16 @@ jobs:
       - name: Byte-compile every module
         run: python -m compileall -q checkmod tools packaging
 
+      # A workflow that only parses as YAML can still be rejected by GitHub -
+      # a `secrets` reference in a step-level `if` did exactly that, silently
+      # disabling the release build. actionlint checks expressions, contexts
+      # and action inputs, so the same mistake fails here instead.
+      - name: Lint the GitHub Actions workflows
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m pip install actionlint-py
+          actionlint .github/workflows/*.yml
+
       - name: Verify the icon generator still runs
         run: |
           python tools/make_icon.py --out /tmp/icon-check
