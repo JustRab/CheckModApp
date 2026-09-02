@@ -1,0 +1,7 @@
+# Development and build dependencies.
+# The application itself has ZERO runtime dependencies - it uses only the
+# Python standard library (Tkinter). Nothing below ships inside the binary
+# except PyInstaller's bootloader.
+
+pyinstaller>=6.3        # builds the portable single-file executable
+pytest>=7.4             # unit tests for the headless logic

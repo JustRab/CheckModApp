@@ -1,0 +1,30 @@
+# Build output
+build/
+dist/
+*.spec.bak
+.buildenv/
+*.exe
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# CheckMod runtime data (never commit anyone's local history)
+CheckModData/
+checkmod.portable
+settings.json
+settings.backup.json
+history.jsonl
+*.broken-*
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
