@@ -4,7 +4,8 @@ name: Build Windows executable
 # cross-compile, so this must run on a Windows runner.
 on:
   push:
-    tags: ["v*"]
+    # Match both tagging conventions: "v1.0.0" and a bare "1.0.0".
+    tags: ["v*", "[0-9]*"]
   workflow_dispatch:
 
 permissions:
@@ -54,7 +55,7 @@ jobs:
           if-no-files-found: error
 
       - name: Attach the executable to the release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
