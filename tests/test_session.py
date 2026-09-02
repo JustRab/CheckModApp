@@ -232,9 +232,43 @@ def test_snapshot_captures_aggregates_and_no_identifying_data():
     assert record["total_checks"] == 2
     # Privacy guarantee: nothing that could identify a user, case or subject.
     assert set(record) == {
-        "ts", "case_id", "case_name", "duration_s", "target_s", "paused_s",
-        "checks", "cleared", "total_checks", "within_target",
+        "ts", "case_id", "case_name", "duration_s", "target_s",
+        "effective_target_s", "paused_s", "checks", "cleared", "total_checks",
+        "within_target",
     }
+
+
+def test_snapshot_records_both_the_configured_and_the_adaptive_target():
+    """Adaptive targets must not erase what the type is actually budgeted at."""
+    session, clock = make_session(target=300)
+    session.set_target(240)               # adaptive target for this case
+    session.start()
+    clock.advance(250)
+    record = session.snapshot()
+    assert record["target_s"] == 300      # the configured budget
+    assert record["effective_target_s"] == 240
+
+
+def test_restore_puts_a_completed_case_back_on_the_clock():
+    """"Undo last case" has to return elapsed time and ticks, paused."""
+    session, clock = make_session(target=300)
+    session.start()
+    clock.advance(120)
+    session.toggle_check("a")
+    record = session.snapshot()
+    session.reset()
+
+    session.restore(record)
+    assert session.case_id == "voice"
+    assert session.elapsed == 120
+    assert session.state == PAUSED
+    assert session.checks == {"a": True, "b": False}
+
+    clock.advance(30)
+    assert session.elapsed == 120          # stays paused until resumed
+    session.start()
+    clock.advance(10)
+    assert session.elapsed == 130
 
 
 def test_snapshot_marks_a_case_that_ran_over_target():

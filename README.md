@@ -56,12 +56,15 @@ are ever requested**, so it never needs an IT ticket.
 |---|---|
 | **Always on top** | The window floats above every other application, so the checklist never disappears behind the moderation queue. One click un-pins it. |
 | **AHT per case type** | Voice Chat, Text Chat and Island ship with their own targets. Add, rename, recolour, reorder, disable or delete case types, and edit any target in seconds — from Dev Mode or straight from the timer. |
-| **Adherence checklist** | Escalation, Enforcement, Evidence and Comment Adherence, each with a hover description. Fully editable: add your own items, reword them, or switch some off. |
-| **Live AHT gauge** | The ring fills as the case runs, turns amber at a configurable threshold and red once the target is passed, with an optional alert. |
+| **Adherence checklist** | Escalation, Enforcement, Evidence and Comment Adherence, each with a hover description. **Per case type** — Evidence Adherence applies to Island only, so Voice and Text chats show three items. Fully editable: add your own, reword them, change which types they apply to. |
+| **Adaptive AHT** | The target tracks the weekly average instead of a static number: run long on a few cases and the next ones ask for slightly less. Spread over a configurable number of cases, clamped at both ends, and switchable off. |
+| **Weekly plan** | This week Sunday–Saturday, per case type: count, running average vs target, and how many more cases at what AHT to get back on target. |
+| **Undo** | Removes the last logged case and puts it back on the clock so it can be corrected. Mis-clicking Complete skews nothing. |
+| **Live AHT gauge** | The ring fills as the case runs, turns amber at a configurable threshold and red once the target is passed. A heads-up alert fires a configurable number of seconds *before* the target, while there is still time to wrap up. |
 | **Two modes** | *User Mode* is a deliberately tiny surface for daily work. *Dev Mode* exposes every option, plus statistics. |
 | **Deeply customisable** | 8 themes, 10 accent swatches plus any custom colour, opacity, corner radius, font, text scale, layout switches, snapping, thresholds — all live, no restart. |
 | **Compact layout** | Collapses to a single strip that tucks into a screen corner next to your queue. |
-| **Local statistics** | Cases handled, average AHT, percentage within target, percentage with a clean checklist, and which adherence item you miss most. Exportable to CSV. |
+| **Local statistics** | This week per case type with its recovery plan, plus cases handled, average AHT, percentage within target, percentage with a clean checklist, and which adherence item you miss most. Exportable to CSV. |
 | **Built-in tutorial** | A seven-step walkthrough on first run, reachable any time from the **?** button or `F1`. |
 | **Privacy first** | Zero network code. Zero telemetry. No personal data and no case identifiers are ever stored. One button erases everything. |
 | **Zero dependencies** | Pure Python standard library. The whole app is auditable in an afternoon. |
@@ -128,10 +131,10 @@ Click **DEV** in the title bar (or press `Ctrl+D`). Eight sections:
 | **Style** | Theme presets, accent colour, custom colour picker, font, text scale, corner radius, opacity, layout switches |
 | **Window** | Always on top, custom title bar, edge snapping and its distance, remembered position, re-centre, compact mode |
 | **AHT** | Case types: name, colour, AHT target, enable/disable, reorder, delete, add |
-| **Checks** | Checklist items: label, hover description, enable/disable, reorder, delete, add |
-| **Rules** | Auto-start, reset confirmation, "require a full checklist", paused-time accounting, amber threshold, over-target alert and sound |
+| **Checks** | Checklist items: label, hover description, which case types they apply to, enable/disable, reorder, delete, add |
+| **Rules** | Auto-start, reset confirmation, "require a full checklist", paused-time accounting, amber threshold, pre-target heads-up, over-target alert and sound, adaptive-AHT tuning and the week boundary |
 | **Data** | History on/off, retention, storage location, portable mode, CSV export, settings import/export, erase everything |
-| **Stats** | Today / last 7 days / all time, per case type, and your most-missed adherence items |
+| **Stats** | This week (Sun–Sat) per case type with the recovery plan, plus today, all time, and your most-missed adherence items |
 | **Info** | Version, keyboard shortcuts, the privacy statement, and the tutorial |
 
 Every change applies immediately and is saved to disk right away.
@@ -146,13 +149,13 @@ Every change applies immediately and is saved to disk right away.
 |:---:|:---:|:---:|
 | <img src="docs/images/user.png" width="230"> | <img src="docs/images/compact.png" width="230"> | <img src="docs/images/tutorial.png" width="230"> |
 
-| Themes & accents | AHT targets | Statistics |
+| Themes & accents | AHT targets | Weekly plan |
 |:---:|:---:|:---:|
 | <img src="docs/images/dev.png" width="230"> | <img src="docs/images/devcases.png" width="230"> | <img src="docs/images/devstats.png" width="230"> |
 
-| Daylight theme | Aurora theme |
-|:---:|:---:|
-| <img src="docs/images/light.png" width="230"> | <img src="docs/images/aurora.png" width="230"> |
+| Per-case checklists | Daylight theme | Aurora theme |
+|:---:|:---:|:---:|
+| <img src="docs/images/devchecks.png" width="230"> | <img src="docs/images/light.png" width="230"> | <img src="docs/images/aurora.png" width="230"> |
 
 </div>
 
@@ -171,6 +174,7 @@ permissions and will not trip endpoint-security tooling.
 | `Alt+1` … `Alt+9` | Select the *n*-th case type |
 | `Ctrl+Enter` | Complete the case |
 | `Ctrl+R` | Reset the case |
+| `Ctrl+Z` | Undo the last logged case |
 | `Ctrl+D` | Toggle Dev Mode |
 | `Ctrl+T` | Toggle always-on-top |
 | `Ctrl+M` | Toggle the compact layout |

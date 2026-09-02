@@ -70,7 +70,8 @@ class Session:
         self._clock = clock
         self.case_id: Optional[str] = None
         self.case_name: str = ""
-        self.target_s: int = 0
+        self.target_s: int = 0        # effective target (may be adaptive)
+        self.base_target_s: int = 0   # the case type's configured target
         self.state: str = IDLE
         self._started_at: Optional[float] = None   # monotonic mark of the run
         self._accumulated: float = 0.0             # completed run segments
@@ -78,6 +79,9 @@ class Session:
         self._paused_at: Optional[float] = None
         self.checks: Dict[str, bool] = {}
         self.started_wall: Optional[float] = None  # epoch, for the history log
+        # Latches so each alert fires once per case rather than every tick.
+        self.prealert_fired = False
+        self.over_alert_fired = False
 
     # ------------------------------------------------------------------
     # Configuration
@@ -86,7 +90,8 @@ class Session:
         """Attach a case type (and its AHT target) to this session."""
         self.case_id = case.get("id")
         self.case_name = case.get("name", "")
-        self.target_s = int(case.get("target_s", 0) or 0)
+        self.base_target_s = int(case.get("target_s", 0) or 0)
+        self.target_s = self.base_target_s
         if autostart and self.state == IDLE:
             self.start()
 
@@ -142,11 +147,14 @@ class Session:
         self._paused_total = 0.0
         self._paused_at = None
         self.started_wall = None
+        self.prealert_fired = False
+        self.over_alert_fired = False
         self.checks = {cid: False for cid in self.checks}
         if not keep_case:
             self.case_id = None
             self.case_name = ""
             self.target_s = 0
+            self.base_target_s = 0
 
     # ------------------------------------------------------------------
     # Derived values
@@ -237,18 +245,40 @@ class Session:
         target and which adherence items were cleared. There is deliberately
         no field for a case id, a user id or free text.
         """
-        return {
+        record = {
             "ts": int(time.time()),
             "case_id": self.case_id or "",
             "case_name": self.case_name,
             "duration_s": int(round(self.billable(count_paused))),
-            "target_s": int(self.target_s),
+            "target_s": int(self.base_target_s or self.target_s),
+            "effective_target_s": int(self.target_s),
             "paused_s": int(round(self.paused_seconds)),
             "checks": dict(self.checks),
             "cleared": self.cleared_count,
             "total_checks": len(self.checks),
             "within_target": bool(self.target_s <= 0 or self.elapsed <= self.target_s),
         }
+        return record
+
+    def restore(self, record: Dict) -> None:
+        """Reload a previously completed case so it can be corrected.
+
+        Used by "undo last case": the elapsed time and ticks come back, the
+        stopwatch stays paused, and completing again writes a fresh record.
+        """
+        self.case_id = record.get("case_id") or None
+        self.case_name = record.get("case_name", "")
+        self.base_target_s = int(record.get("target_s", 0) or 0)
+        self.target_s = int(record.get("effective_target_s", self.base_target_s) or 0)
+        self._accumulated = float(record.get("duration_s", 0) or 0)
+        self._started_at = None
+        self._paused_total = float(record.get("paused_s", 0) or 0)
+        self._paused_at = None
+        self.state = PAUSED if self._accumulated else IDLE
+        self.checks = {str(k): bool(v) for k, v in (record.get("checks") or {}).items()}
+        self.prealert_fired = True      # already past this case's alerts
+        self.over_alert_fired = True
+        self.started_wall = None
 
     def missing_checks(self, items: List[Dict]) -> List[str]:
         """Labels of the checklist items still unticked (for the UI hint)."""

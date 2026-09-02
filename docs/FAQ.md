@@ -43,6 +43,28 @@ half.
 Yes — *Dev Mode → AHT* and *Dev Mode → Checks*. Add, rename, recolour,
 describe, reorder, disable or delete anything, including the four defaults.
 
+**Why does Voice Chat show three checklist items and Island four?**
+Evidence Adherence only applies to Island — a voice or text chat has no
+evidence to attach. Change it in *Dev Mode → Checks*: every item has an
+*Applies to* row where you pick the case types it is required for.
+
+**Why is the target different from what I set?**
+Adaptive targeting is on by default: the timer tracks this week's average for
+that case type, so running long on a few cases makes the next ones ask for
+slightly less. The pill shows the difference, e.g. `Target 14:30 (-00:30)`,
+and hovering it names your configured target. *Dev Mode → Rules → Adaptive
+target* turns it off.
+
+**I completed a case by mistake.**
+Press `Ctrl+Z`, or the **↶** button at the bottom of User Mode, or *Dev Mode →
+Data → Undo last logged case*. The record is removed and — if nothing else is
+in progress — the case comes back on the clock, paused, with its ticks intact.
+
+**How do I know how much AHT I need to catch up?**
+*Dev Mode → Stats* opens with this week per case type: how far over or under
+budget you are, and the AHT the next 5, 10 or 20 cases would need to average
+to bring the weekly number back to target.
+
 **Does the timer keep running if I switch case type mid-case?**
 Yes. Elapsed time is kept and only the target changes, because reclassifying
 a case part-way through is normal.
@@ -99,6 +121,12 @@ from source with `python -m checkmod`.
 **`ModuleNotFoundError: No module named 'tkinter'` when running from source.**
 Tk is a separate package on Linux: `sudo apt install python3-tk`. On Windows,
 re-run the Python installer and tick *tcl/tk and IDLE*.
+
+**I made the window small and now I cannot resize it.**
+Fixed in 1.1.0 — the footer holding the resize grip was being squeezed to zero
+height. If you are on an older build, drag the window bigger from *Dev Mode →
+Window → Centre window*, or delete `settings.json` from the data folder to
+reset its geometry.
 
 **The top bar looks cut off / the title is squashed against the top edge.**
 Fixed in 1.0.1. The bar was a hard-coded 34 px, which is too short once

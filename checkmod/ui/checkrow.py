@@ -138,7 +138,9 @@ class ChecklistPanel(tk.Frame):
         for child in self.winfo_children():
             child.destroy()
         self.rows = {}
-        items = self.app.config.active_checks()
+        # Only the items that apply to the selected case type: Evidence
+        # Adherence is meaningless on a Voice or Text chat.
+        items = self.app.config.active_checks(self.app.session.case_id)
         if not items:
             tk.Label(self, text=self.app.t("user.no_checks"), bg=self.app.theme["bg"],
                      fg=self.app.theme["text_faint"], font=self.app.fonts["small"],

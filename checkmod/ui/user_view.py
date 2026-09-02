@@ -90,7 +90,7 @@ class UserView(tk.Frame):
                               bd=0, cursor="hand2")
         self.meta.pack(fill="x", pady=(2, 10))
         self.meta.bind("<Button-1>", lambda _e: self.edit_target())
-        Tooltip(self.meta, app.t("user.edit_aht"))
+        self.meta_tip = Tooltip(self.meta, app.t("user.edit_aht"))
 
         # --- transport controls ---------------------------------------
         controls = tk.Frame(outer, bg=theme["bg"])
@@ -132,10 +132,19 @@ class UserView(tk.Frame):
         self.btn_complete.pack(fill="x", pady=(10, 0))
 
         # --- footer stats ---------------------------------------------
+        footer_row = tk.Frame(outer, bg=theme["bg"])
+        footer_row.pack(fill="x", pady=(10, 0))
+        self.btn_undo = Button(
+            footer_row, theme, fonts, text="\u21b6", command=app.undo_last_case,
+            variant="ghost", height=22, radius=6, bg_token="bg", font_key="small",
+            width=28, tooltip=app.t("user.undo_last"),
+        )
+        self.btn_undo.pack(side="right")
         if app.config.get("show_footer_stats", True):
-            self.footer = tk.Label(outer, text="", bg=theme["bg"], fg=theme["text_faint"],
-                                   font=fonts["tiny"], anchor="center")
-            self.footer.pack(fill="x", pady=(10, 0))
+            self.footer = tk.Label(footer_row, text="", bg=theme["bg"],
+                                   fg=theme["text_faint"], font=fonts["tiny"],
+                                   anchor="w")
+            self.footer.pack(side="left", fill="x", expand=True)
         else:
             self.footer = None
 
@@ -177,13 +186,20 @@ class UserView(tk.Frame):
         # Mini checklist: one square per item, tooltip carries the full label.
         chips = tk.Frame(outer, bg=theme["bg"])
         chips.pack(fill="x")
-        for item in app.config.active_checks():
+        for item in app.config.active_checks(app.session.case_id):
             chip = tk.Canvas(chips, width=26, height=22, bg=theme["bg"],
                              highlightthickness=0, bd=0, cursor="hand2")
             chip.pack(side="left", padx=(0, 5))
             chip.bind("<Button-1>", lambda _e, cid=item["id"]: self._toggle_one(cid))
             Tooltip(chip, item.get("label", ""))
             self._mini_checks[item["id"]] = chip
+
+        self.btn_undo = Button(
+            chips, theme, fonts, text="\u21b6", command=app.undo_last_case,
+            variant="ghost", height=22, radius=6, bg_token="bg", font_key="small",
+            width=26, tooltip=app.t("user.undo_last"),
+        )
+        self.btn_undo.pack(side="right")
 
         self.meta = None
         self.checklist = None
@@ -307,14 +323,18 @@ class UserView(tk.Frame):
             self.footer.configure(text=app.t("footer.history_off"))
             return
         stats = app.history.stats(window_days=1)
-        if not stats["count"]:
-            self.footer.configure(text=f"{app.t('footer.today')}  ·  0 {app.t('footer.cases')}")
-            return
-        self.footer.configure(text=(
-            f"{app.t('footer.today')}  ·  {stats['count']} {app.t('footer.cases')}"
-            f"  ·  {app.t('footer.avg')} {format_duration(stats['avg_s'])}"
-            f"  ·  {stats['clean_pct']:.0f}% {app.t('footer.clean')}"
-        ))
+        today = (f"{app.t('footer.today')} {stats['count']}"
+                 if stats["count"] else f"{app.t('footer.today')} 0")
+
+        # The weekly line for the selected type: that is the average the
+        # adaptive target is steering, so it belongs on screen.
+        week = ""
+        entry = app.weekly_plan().get(app.session.case_id) if app.session.case_id else None
+        if entry and entry["count"]:
+            arrow = "\u25b2" if entry["debt_s"] > 0 else "\u25bc"
+            week = (f"   ·   {app.t('user.week')} {entry['count']}"
+                    f"  {format_duration(entry['avg_s'])} {arrow}")
+        self.footer.configure(text=today + week)
 
     def tick(self) -> None:
         """Called ~5x/second by the app to advance the timer display."""
@@ -353,6 +373,13 @@ class UserView(tk.Frame):
 
         if self.meta is not None:
             self._paint_meta(status)
+            if session.base_target_s and session.target_s != session.base_target_s:
+                self.meta_tip.set_text(
+                    f"{app.t('user.adaptive')} - "
+                    f"{app.t('user.base_target')} {format_duration(session.base_target_s)}. "
+                    f"{app.t('user.edit_aht')}.")
+            else:
+                self.meta_tip.set_text(app.t("user.edit_aht"))
 
     def _paint_meta(self, status: str) -> None:
         """Draw the 'Target 05:00 · edit' strip under the timer."""
@@ -366,12 +393,23 @@ class UserView(tk.Frame):
         session = app.session
         target = format_duration(session.target_s) if session.target_s else "--:--"
         label = f"{app.t('user.target')}  {target}"
+        # When the adaptive target differs from the configured one, show the
+        # delta so the number never looks arbitrary.
+        adapted = (session.base_target_s and session.target_s
+                   and session.target_s != session.base_target_s)
+        if adapted:
+            delta = session.target_s - session.base_target_s
+            label += f"  ({'+' if delta > 0 else '-'}{format_duration(abs(delta))})"
         pill_w = fonts.measure(label, "small") + 46
         x1 = (width - pill_w) / 2
         draw_round_rect(canvas, x1, 1, x1 + pill_w, 23, 11,
                         fill=theme["surface"], outline=theme["border"])
-        canvas.create_text(x1 + 14, 12, anchor="w", text=label,
-                           fill=theme["text_dim"] if status != "over" else theme["danger"],
+        color = theme["text_dim"]
+        if status == "over":
+            color = theme["danger"]
+        elif adapted:
+            color = theme["accent"]
+        canvas.create_text(x1 + 14, 12, anchor="w", text=label, fill=color,
                            font=fonts["small"])
         # Pencil affordance drawn by hand (no glyph dependency).
         px = x1 + pill_w - 22

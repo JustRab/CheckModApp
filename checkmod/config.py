@@ -19,7 +19,7 @@ from . import paths
 
 #: Bumped whenever :data:`DEFAULTS` changes shape in a way that needs a
 #: migration step in :func:`migrate`.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 #: AHT target used for a newly created case type, and as the fallback when a
@@ -32,9 +32,15 @@ def _case(cid: str, name: str, target: int, color: str) -> Dict[str, Any]:
     return {"id": cid, "name": name, "target_s": target, "color": color, "enabled": True}
 
 
-def _check(cid: str, label: str, hint: str) -> Dict[str, Any]:
-    """Build a checklist-item record."""
-    return {"id": cid, "label": label, "hint": hint, "enabled": True}
+def _check(cid: str, label: str, hint: str, applies_to=None) -> Dict[str, Any]:
+    """Build a checklist-item record.
+
+    ``applies_to`` lists the case-type ids the item is required for. An empty
+    list means "every case type", which is the common case and keeps the
+    settings file readable.
+    """
+    return {"id": cid, "label": label, "hint": hint, "enabled": True,
+            "applies_to": list(applies_to or [])}
 
 
 #: Every setting the app understands, with the value used on first run.
@@ -72,6 +78,19 @@ DEFAULTS: Dict[str, Any] = {
     "confirm_reset": True,
     "require_all_checks": False,    # block "Complete" until every box is ticked
     "count_paused_time": False,
+    # Heads-up alert a few seconds before the target is reached, so the agent
+    # can start wrapping up rather than discovering the overrun afterwards.
+    "prealert_enabled": True,
+    "prealert_seconds": 10,
+    # ----- Adaptive AHT ----------------------------------------------------
+    # The timer target can track the weekly average instead of sitting on the
+    # static per-type number: run long on a few cases and the next ones ask
+    # for a little less, which is what actually keeps a weekly AHT on plan.
+    "adaptive_target": True,
+    "adaptive_recovery_cases": 10,  # spread any correction over this many cases
+    "adaptive_min_factor": 0.6,     # never demand less than 60% of the target
+    "adaptive_max_factor": 1.25,    # never hand back more than 125% of it
+    "week_starts_on": "sunday",     # "sunday" | "monday"
     # ----- Data ------------------------------------------------------------
     "history_enabled": True,
     "history_retention_days": 30,
@@ -86,8 +105,11 @@ DEFAULTS: Dict[str, Any] = {
                "The case was escalated to the right queue / tier when required."),
         _check("enforcement", "Enforcement Adherence",
                "The action applied matches the policy and the severity tier."),
+        # Voice and Text chat cases carry no evidence to attach, so this item
+        # only applies to Island.
         _check("evidence", "Evidence Adherence",
-               "Evidence is attached, legible and sufficient to justify the action."),
+               "Evidence is attached, legible and sufficient to justify the action.",
+               applies_to=["island"]),
         _check("comment", "Comment Adherence",
                "The internal comment explains the reasoning clearly and completely."),
     ],
@@ -102,6 +124,10 @@ LIMITS = {
     "warn_at_pct": (10, 100),
     "snap_threshold": (0, 60),
     "history_retention_days": (0, 3650),
+    "prealert_seconds": (0, 120),
+    "adaptive_recovery_cases": (1, 200),
+    "adaptive_min_factor": (0.2, 1.0),
+    "adaptive_max_factor": (1.0, 3.0),
     "window.w": (280, 900),
     "window.h": (320, 1400),
 }
@@ -139,7 +165,16 @@ def migrate(data: Dict[str, Any]) -> Dict[str, Any]:
     ever discarding a user's configuration.
     """
     schema = int(data.get("schema", 0) or 0)
-    # if schema < 2: ...  (future migrations land here)
+
+    if schema < 2:
+        # Schema 2 introduced per-case-type checklist applicability. Existing
+        # items keep applying everywhere (an empty list), except the built-in
+        # Evidence item, which only ever made sense for Island cases.
+        for item in data.get("checklist") or []:
+            if not isinstance(item, dict) or "applies_to" in item:
+                continue
+            item["applies_to"] = ["island"] if item.get("id") == "evidence" else []
+
     data["schema"] = max(schema, SCHEMA_VERSION)
     return data
 
@@ -341,11 +376,15 @@ class Config:
         for item in items or []:
             if not isinstance(item, dict) or not item.get("label"):
                 continue
+            applies = item.get("applies_to")
+            if not isinstance(applies, list):
+                applies = []
             cleaned.append({
                 "id": str(item.get("id") or new_id("chk")),
                 "label": str(item["label"])[:60],
                 "hint": str(item.get("hint", ""))[:240],
                 "enabled": bool(item.get("enabled", True)),
+                "applies_to": [str(value) for value in applies if value],
             })
         return cleaned
 
@@ -356,9 +395,18 @@ class Config:
         """Case types the user actually wants to see in User Mode."""
         return [c for c in self.get("case_types", []) if c.get("enabled", True)]
 
-    def active_checks(self) -> List[Dict[str, Any]]:
-        """Checklist items currently enabled."""
-        return [c for c in self.get("checklist", []) if c.get("enabled", True)]
+    def active_checks(self, case_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Checklist items in force, optionally narrowed to one case type.
+
+        An item with an empty ``applies_to`` applies everywhere; otherwise it
+        only appears for the case types it names. Passing ``case_id=None``
+        returns every enabled item, which is what the Dev Mode editor wants.
+        """
+        items = [c for c in self.get("checklist", []) if c.get("enabled", True)]
+        if case_id is None:
+            return items
+        return [c for c in items
+                if not c.get("applies_to") or case_id in c["applies_to"]]
 
     def case_by_id(self, case_id: Optional[str]) -> Optional[Dict[str, Any]]:
         """Look up a case type by id, or ``None``."""

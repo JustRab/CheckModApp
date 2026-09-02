@@ -4,6 +4,46 @@ All notable changes to CheckMod are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] — 2026-09-02
+
+### Added
+
+- **Per-case-type checklists.** A checklist item can now be required only for
+  the case types it actually applies to. Evidence Adherence ships applying to
+  Island only — Voice and Text chats show the other three. Dev Mode → Checks
+  has a chip per case type on every item.
+- **Weekly AHT and a recovery plan** (Dev Mode → Stats). For the current week,
+  Sunday to Saturday, each case type reports its case count, running average
+  against target, and the surplus or deficit in minutes. When you are over
+  budget it answers the question that matters mid-shift: *how many more cases,
+  at what AHT?* — showing the required pace over the next 5, 10 and 20 cases,
+  flagging any that are not realistically reachable, and giving the minimum
+  number of cases needed at the fastest pace you are willing to ask for.
+- **Adaptive AHT targets.** The timer target now tracks the weekly average
+  rather than sitting on a static number: run long on a few cases and the next
+  ones ask for a little less; run fast and some slack comes back. The
+  correction is spread over a configurable number of cases and clamped at both
+  ends, so the target never becomes absurd. The Target pill shows the delta
+  and its tooltip names the configured base target. Switch it off in
+  Dev Mode → Rules to always use the configured value.
+- **Heads-up alert before the target.** A single high tone and a blink of the
+  status dot fire a configurable number of seconds before the AHT target is
+  reached (10 by default), so there is still time to wrap up. The over-target
+  alert is now two lower tones, so the two are distinguishable by ear.
+- **Undo the last logged case** — a button in User Mode, another in
+  Dev Mode → Data, and `Ctrl+Z`. When nothing is in progress the case is put
+  back on the clock, paused, with its ticks intact so it can be corrected and
+  completed again. Mis-clicking Complete now skews nothing.
+- Week boundary is configurable (Sunday or Monday).
+
+### Fixed
+
+- **The resize grip disappeared when the window was made small**, leaving no
+  way to enlarge it again. Tk allocates space in packing order and the body
+  expands, so the footer holding the grip — packed after it — was the first
+  thing squeezed to zero. The footer now claims its space first, and the
+  window's minimum height is derived from the real chrome height.
+
 ## [1.0.1] — 2026-09-02
 
 ### Fixed

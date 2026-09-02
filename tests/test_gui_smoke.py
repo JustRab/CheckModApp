@@ -116,7 +116,8 @@ def test_the_compact_layout_shrinks_the_window_and_keeps_the_checks(app):
     app._restyle_now()
     app.root.update()
     assert app.root.winfo_height() < full_height
-    assert len(app.view._mini_checks) == len(app.config.active_checks())
+    assert len(app.view._mini_checks) == len(
+        app.config.active_checks(app.session.case_id))
 
 
 def test_the_tutorial_walks_through_every_step_and_closes(app):
@@ -233,3 +234,140 @@ def test_the_window_can_be_dragged_while_the_tutorial_is_open(app):
     app.tutorial._on_drag_motion(moved)
     app.root.update()
     app.tutorial.close()
+
+
+# ----------------------------------------------------------------------
+# Per-case checklists, adaptive targets, undo, resize
+# ----------------------------------------------------------------------
+def test_evidence_adherence_is_hidden_for_voice_and_text_chat(app):
+    """Only Island cases carry evidence to attach."""
+    labels = {}
+    for case in app.config.active_cases():
+        app.select_case(case["id"])
+        app.root.update()
+        labels[case["id"]] = list(app.view.checklist.rows)
+
+    assert "evidence" not in labels["voice"]
+    assert "evidence" not in labels["text"]
+    assert "evidence" in labels["island"]
+    assert len(labels["voice"]) == 3
+    assert len(labels["island"]) == 4
+
+
+def test_switching_case_type_reshapes_the_live_checklist(app):
+    app.select_case("island")
+    app.root.update()
+    assert "evidence" in app.session.checks
+
+    app.select_case("voice")
+    app.root.update()
+    assert "evidence" not in app.session.checks
+    assert set(app.session.checks) == {"escalation", "enforcement", "comment"}
+
+
+def test_the_resize_grip_survives_shrinking_the_window_to_its_minimum(app):
+    """The grip used to be squeezed to zero height, trapping the window."""
+    app.root.update()
+    app.resize_window(280, 10)          # ask for far less than is possible
+    app.root.update()
+
+    assert app.grip.winfo_ismapped()
+    assert app.grip.winfo_height() >= 8, "the resize grip collapsed"
+    assert app.grip.winfo_width() >= 8
+    # ...and the window can still be grown again afterwards.
+    app.resize_window(360, 620)
+    app.root.update()
+    assert app.root.winfo_height() > 200
+
+
+def test_the_window_cannot_shrink_below_its_own_chrome(app):
+    app.root.update()
+    app.resize_window(300, 1)
+    app.root.update()
+    assert app.root.winfo_height() >= app.chrome_height()
+
+
+def test_the_adaptive_target_tightens_after_a_slow_case(app):
+    """A case run over budget should pull the next target down."""
+    app.config.set("adaptive_target", True)
+    app.config.set("adaptive_recovery_cases", 10)
+    app.select_case("voice")
+    base = app.config.case_by_id("voice")["target_s"]
+    assert app.session.target_s == base
+
+    # Log one case that ran 10 minutes over target.
+    app.history.append({
+        "ts": int(__import__("time").time()), "case_id": "voice",
+        "case_name": "Voice Chat", "duration_s": base + 600, "target_s": base,
+        "effective_target_s": base, "paused_s": 0, "checks": {}, "cleared": 0,
+        "total_checks": 0, "within_target": False,
+    })
+    app.apply_adaptive_target()
+    app.root.update()
+
+    assert app.session.target_s < base
+    assert app.session.base_target_s == base          # configured value survives
+    # ...and it is clamped, never absurd.
+    floor = base * float(app.config.get("adaptive_min_factor"))
+    assert app.session.target_s >= floor
+
+
+def test_turning_adaptive_targeting_off_restores_the_configured_target(app):
+    base = app.config.case_by_id("voice")["target_s"]
+    app.select_case("voice")
+    app.history.append({
+        "ts": int(__import__("time").time()), "case_id": "voice",
+        "case_name": "Voice Chat", "duration_s": base + 600, "target_s": base,
+        "effective_target_s": base, "paused_s": 0, "checks": {}, "cleared": 0,
+        "total_checks": 0, "within_target": False,
+    })
+    app.config.set("adaptive_target", False)
+    app.apply_adaptive_target()
+    assert app.session.target_s == base
+
+
+def test_undo_removes_the_last_case_and_puts_it_back_on_the_clock(app, monkeypatch):
+    from checkmod.ui import dialogs
+
+    monkeypatch.setattr(dialogs, "confirm", lambda *a, **k: True)
+    app.select_case("voice")
+    app.session._accumulated = 42.0
+    app.session.toggle_check("escalation")
+    app.complete_case()
+    app.root.update()
+    assert len(app.history.load()) == 1
+    assert app.session.cleared_count == 0
+
+    app.undo_last_case()
+    app.root.update()
+    assert app.history.load() == []
+    assert app.session.case_id == "voice"
+    assert round(app.session.elapsed) == 42
+    assert app.session.checks["escalation"] is True
+
+
+def test_undo_with_nothing_logged_is_harmless(app, monkeypatch):
+    from checkmod.ui import dialogs
+
+    seen = []
+    monkeypatch.setattr(dialogs, "alert", lambda _app, message: seen.append(message))
+    app.undo_last_case()
+    assert seen and app.history.load() == []
+
+
+def test_the_prealert_fires_once_shortly_before_the_target(app):
+    app.config.set("prealert_enabled", True)
+    app.config.set("prealert_seconds", 10)
+    app.select_case("voice")
+    app.session.start()
+    app.session._accumulated = app.session.target_s - 5   # inside the window
+    app.session._started_at = app.session._clock()
+
+    assert app.session.prealert_fired is False
+    app._check_prealert()
+    assert app.session.prealert_fired is True
+
+    app.session.prealert_fired = False
+    app.config.set("prealert_enabled", False)
+    app._check_prealert()
+    assert app.session.prealert_fired is False

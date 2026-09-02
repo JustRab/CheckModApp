@@ -99,7 +99,10 @@ A bare number is read as **minutes**, because that is how AHT is discussed.
 
 ## 5. Working the checklist
 
-The four adherence items are the ones your QA is scored on:
+The adherence items are the ones your QA is scored on. **Which ones appear
+depends on the case type** — Evidence Adherence only shows for Island, because
+Voice and Text chats have no evidence to attach, so those show three items
+instead of four. Dev Mode → Checks controls this per item.
 
 | Item | What you are confirming |
 |---|---|
@@ -122,6 +125,26 @@ underneath tells you how many items are still open.
 
 ---
 
+## 5b. Adaptive targets
+
+By default the target shown under the ring is **adaptive**: it tracks this
+week's average for the case type rather than sitting on the configured number.
+
+- Run long on a few cases and the next ones ask for slightly less, so the
+  weekly average is pulled back towards target.
+- Run fast and a little slack comes back.
+- The correction is spread over the next 10 cases (configurable) and clamped
+  between 60% and 125% of the configured target, so it never becomes absurd.
+
+When the adaptive target differs from the configured one the pill shows the
+difference — `Target 14:30 (-00:30)` — in the accent colour, and hovering it
+names the base target. Turn the whole thing off in *Dev Mode → Rules →
+Adaptive target* to always use the configured number.
+
+A **heads-up alert** also fires 10 seconds before the target (configurable):
+one high tone if sound is on, plus a blink of the status dot. Passing the
+target gives two lower tones, so you can tell them apart without looking.
+
 ## 6. Completing the case
 
 **Complete case** (`Ctrl+Enter`):
@@ -134,8 +157,15 @@ underneath tells you how many items are still open.
 If you want the app to *stop* you from completing a case with an unfinished
 checklist, turn on *Dev Mode → Rules → Require a full checklist to complete*.
 
-The line at the bottom of the window summarises today: cases handled, average
-AHT and the percentage that finished with a clean checklist.
+The line at the bottom summarises today's count and this week's position for
+the selected case type — the average the adaptive target is steering, with an
+arrow showing whether you are over or under budget.
+
+**Completed the wrong case?** The **↶** button next to that line (or `Ctrl+Z`,
+or *Dev Mode → Data → Undo last logged case*) removes the most recent record.
+If nothing is in progress the case is put straight back on the clock, paused,
+with its ticks intact, so you can fix it and complete it again. Worth knowing,
+because a wrong record now skews the weekly average that drives your targets.
 
 ---
 
@@ -171,7 +201,23 @@ See **[CUSTOMIZATION.md](CUSTOMIZATION.md)** for the full reference.
 
 ## 8. Statistics
 
-*Dev Mode → Stats* shows Today, the last 7 days and all time:
+*Dev Mode → Stats* opens with **this week, Sunday to Saturday**, broken down
+per case type:
+
+- how many cases, and the running average against target,
+- how far over or under budget you are, in minutes,
+- and, when you are over, **the recovery plan**: the AHT the next 5, 10 or 20
+  cases would each need to run at to bring the weekly average back to target.
+  A pace that is not realistically reachable is marked as such rather than
+  printed as an impossible number, and you also get the minimum number of
+  cases needed at the fastest pace you are willing to ask for.
+- The adaptive target currently in force is shown at the bottom of each card.
+
+Worked example: four Voice Chat cases totalling 65:00 against a 60:00 budget
+puts you 5:00 over, so the next 10 cases need to average 14:30 instead of
+15:00 — which is exactly the number the timer will ask for.
+
+Below that, Today and All time show:
 
 - number of cases handled,
 - average AHT,
@@ -216,6 +262,7 @@ Full details in **[PRIVACY.md](PRIVACY.md)**.
 | `Alt+1` … `Alt+9` | Select case type *n* |
 | `Ctrl+Enter` | Complete case |
 | `Ctrl+R` | Reset case |
+| `Ctrl+Z` | Undo the last logged case |
 | `Ctrl+D` | Dev Mode on/off |
 | `Ctrl+T` | Always on top on/off |
 | `Ctrl+M` | Compact layout on/off |
