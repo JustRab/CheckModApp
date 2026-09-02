@@ -36,6 +36,17 @@ def test_defaults_cover_the_documented_requirements(tmp_path):
     assert config.get("mode") == "user"
 
 
+def test_shipped_aht_targets_match_the_documented_values(tmp_path):
+    """The defaults are the team's real targets, not placeholders."""
+    config = make_config(tmp_path)
+    targets = {case["name"]: case["target_s"] for case in config.get("case_types")}
+    assert targets == {
+        "Voice Chat": 15 * 60,
+        "Text Chat": 10 * 60,
+        "Island": 20 * 60,
+    }
+
+
 def test_dotted_get_and_set_round_trip_through_the_file(tmp_path):
     config = make_config(tmp_path)
     config.set("window.w", 420)
@@ -108,7 +119,7 @@ def test_a_case_type_with_a_bad_target_falls_back_to_a_usable_value(tmp_path):
                                                 "target_s": "banana"}]}), encoding="utf-8")
 
     config = Config(path=path)
-    assert config.get("case_types")[0]["target_s"] == 300
+    assert config.get("case_types")[0]["target_s"] == 600
 
 
 def test_an_unknown_language_falls_back_to_english(tmp_path):

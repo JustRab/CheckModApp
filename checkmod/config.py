@@ -22,6 +22,11 @@ from . import paths
 SCHEMA_VERSION = 1
 
 
+#: AHT target used for a newly created case type, and as the fallback when a
+#: hand-edited settings file carries an unparseable one.
+DEFAULT_TARGET_S = 600
+
+
 def _case(cid: str, name: str, target: int, color: str) -> Dict[str, Any]:
     """Build a case-type record (a work item with its own AHT target)."""
     return {"id": cid, "name": name, "target_s": target, "color": color, "enabled": True}
@@ -72,9 +77,9 @@ DEFAULTS: Dict[str, Any] = {
     "history_retention_days": 30,
     # ----- Domain data -----------------------------------------------------
     "case_types": [
-        _case("voice", "Voice Chat", 300, "#7C5CFF"),
-        _case("text", "Text Chat", 240, "#2BB3A3"),
-        _case("island", "Island", 420, "#F2A03D"),
+        _case("voice", "Voice Chat", 900, "#7C5CFF"),    # 15:00
+        _case("text", "Text Chat", 600, "#2BB3A3"),      # 10:00
+        _case("island", "Island", 1200, "#F2A03D"),      # 20:00
     ],
     "checklist": [
         _check("escalation", "Escalation Adherence",
@@ -317,9 +322,9 @@ class Config:
             if not isinstance(item, dict) or not item.get("name"):
                 continue
             try:
-                target = int(item.get("target_s", 300))
+                target = int(item.get("target_s", DEFAULT_TARGET_S))
             except (TypeError, ValueError):
-                target = 300
+                target = DEFAULT_TARGET_S
             cleaned.append({
                 "id": str(item.get("id") or new_id("case")),
                 "name": str(item["name"])[:40],

@@ -202,7 +202,8 @@ class Tutorial(tk.Frame):
             canvas.create_oval(cx - r, cy - r, cx + r, cy + r, outline=theme["track"], width=8)
             canvas.create_arc(cx - r, cy - r, cx + r, cy + r, start=90, extent=-250,
                               style=tk.ARC, outline=theme["warn"], width=8)
-            canvas.create_text(cx, cy, text="04:12", fill=theme["text"], font=fonts["body_bold"])
+            # 10:21 of a 15:00 target matches the ~69% arc drawn above it.
+            canvas.create_text(cx, cy, text="10:21", fill=theme["text"], font=fonts["body_bold"])
             for index, (color, label) in enumerate(
                     ((theme["ok"], "OK"), (theme["warn"], "80%"), (theme["danger"], "100%"))):
                 x = fx1 + 18 + index * 52

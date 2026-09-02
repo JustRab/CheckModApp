@@ -34,9 +34,9 @@ The coloured pills at the top are your case types. Out of the box:
 
 | Case type | Default AHT target |
 |---|---|
-| Voice Chat | 5:00 |
-| Text Chat | 4:00 |
-| Island | 7:00 |
+| Voice Chat | 15:00 |
+| Text Chat | 10:00 |
+| Island | 20:00 |
 
 Clicking one binds it to the current case **and starts the timer** (you can
 turn that off in *Dev Mode → Rules → Start timer when a type is picked*).
@@ -78,7 +78,7 @@ the ring for a large time read-out with a progress bar.
 
 Two ways, both instant:
 
-**From the timer** — click the **`Target 05:00 ✎`** pill under the ring, type
+**From the timer** — click the **`Target 15:00 ✎`** pill under the ring, type
 a new value, press Enter.
 
 **From Dev Mode** — *Dev Mode → AHT*, then edit the target field on any case

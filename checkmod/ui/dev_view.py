@@ -27,7 +27,7 @@ import tkinter as tk
 from typing import Callable, Dict, Optional
 
 from .. import __version__, paths, theme as theme_mod
-from ..config import new_id
+from ..config import DEFAULT_TARGET_S, new_id
 from ..session import format_duration, parse_duration
 from . import dialogs
 from .fonts import PREFERRED_FAMILIES, available_families
@@ -618,7 +618,7 @@ class DevView(tk.Frame):
         cases = [dict(c) for c in self.app.config.get("case_types", [])]
         palette = theme_mod.ACCENT_SWATCHES
         cases.append({
-            "id": new_id("case"), "name": name.strip()[:40], "target_s": 300,
+            "id": new_id("case"), "name": name.strip()[:40], "target_s": DEFAULT_TARGET_S,
             "color": palette[len(cases) % len(palette)], "enabled": True,
         })
         self.app.config.set("case_types", cases)

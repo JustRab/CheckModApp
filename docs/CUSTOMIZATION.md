@@ -88,16 +88,16 @@ add a theme, that test will hold you to the same bar.
 | **▲ / ▼** | Reorder. The order here is the order of the pills — and of the `Alt+1…9` shortcuts. |
 | **×** | Delete, with confirmation. |
 
-**+ Add case type** creates a new one with a 5:00 target and the next unused
+**+ Add case type** creates a new one with a 10:00 target and the next unused
 accent colour.
 
 ### AHT target formats
 
 | You type | Stored as |
 |---|---|
-| `5` | 5 minutes |
-| `4.5` | 4 min 30 s |
-| `05:30` | 5 min 30 s |
+| `15` | 15 minutes |
+| `12.5` | 12 min 30 s |
+| `15:30` | 15 min 30 s |
 | `1:30:00` | 1 h 30 min |
 
 A bare number means **minutes**, because that is how AHT is discussed day to
@@ -105,7 +105,7 @@ day. Anything unparseable is rejected and the field reverts — a typo can
 never silently set a target to zero.
 
 You can also edit the target for the selected type straight from User Mode by
-clicking the `Target 05:00 ✎` pill under the timer.
+clicking the `Target 15:00 ✎` pill under the timer.
 
 ---
 
@@ -224,9 +224,9 @@ Full file, with the factory values:
 
   // ---- domain ----
   "case_types": [
-    { "id": "voice",  "name": "Voice Chat", "target_s": 300, "color": "#7C5CFF", "enabled": true },
-    { "id": "text",   "name": "Text Chat",  "target_s": 240, "color": "#2BB3A3", "enabled": true },
-    { "id": "island", "name": "Island",     "target_s": 420, "color": "#F2A03D", "enabled": true }
+    { "id": "voice",  "name": "Voice Chat", "target_s": 900,  "color": "#7C5CFF", "enabled": true },
+    { "id": "text",   "name": "Text Chat",  "target_s": 600,  "color": "#2BB3A3", "enabled": true },
+    { "id": "island", "name": "Island",     "target_s": 1200, "color": "#F2A03D", "enabled": true }
   ],
 
   "checklist": [

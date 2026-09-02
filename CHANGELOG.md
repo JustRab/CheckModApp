@@ -13,8 +13,8 @@ First release.
 **Core workflow**
 - Floating, always-on-top window with a custom draggable title bar, edge
   snapping, corner resize grip and a remembered position.
-- Case types with individual AHT targets — Voice Chat (5:00), Text Chat
-  (4:00) and Island (7:00) out of the box — addable, renameable,
+- Case types with individual AHT targets — Voice Chat (15:00), Text Chat
+  (10:00) and Island (20:00) out of the box — addable, renameable,
   recolourable, reorderable and removable.
 - Circular AHT gauge with amber and over-target states, an optional alert
   sound and a blinking title-bar status dot.

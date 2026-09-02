@@ -35,8 +35,9 @@ It clamps itself back on screen at launch. If it is still awkward, use *Dev
 Mode → Window → Centre window*.
 
 **Can I change the AHT targets?**
-Yes, in two places: click the `Target 05:00 ✎` pill under the timer, or use
-*Dev Mode → AHT*. Type `5` for five minutes, or `05:30` for five and a half.
+Yes, in two places: click the `Target 15:00 ✎` pill under the timer, or use
+*Dev Mode → AHT*. Type `15` for fifteen minutes, or `15:30` for fifteen and a
+half.
 
 **Can I add my own case types or checklist items?**
 Yes — *Dev Mode → AHT* and *Dev Mode → Checks*. Add, rename, recolour,
