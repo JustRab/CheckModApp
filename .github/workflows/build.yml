@@ -1,0 +1,66 @@
+name: Build Windows executable
+
+# Produces the portable CheckMod.exe that users download. PyInstaller cannot
+# cross-compile, so this must run on a Windows runner.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: CheckMod.exe
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pyinstaller>=6.3"
+
+      - name: Regenerate the icon
+        run: python tools/make_icon.py
+
+      - name: Run the logic tests
+        run: |
+          python -m pip install pytest
+          python -m pytest tests/ -q --ignore=tests/test_gui_smoke.py
+
+      - name: Build the portable executable
+        run: python -m PyInstaller packaging/CheckMod.spec --noconfirm --clean
+
+      - name: Verify the executable exists and report its size
+        shell: pwsh
+        run: |
+          $exe = "dist/CheckMod.exe"
+          if (-not (Test-Path $exe)) { throw "CheckMod.exe was not produced" }
+          "{0:N1} MB" -f ((Get-Item $exe).Length / 1MB)
+
+      - name: Upload the build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CheckMod-windows-portable
+          path: dist/CheckMod.exe
+          if-no-files-found: error
+
+      - name: Attach the executable to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "CheckMod ${GITHUB_REF_NAME}" \
+            --notes "Portable build. Download CheckMod.exe, copy it anywhere and double-click - no installation and no administrator rights required." \
+            dist/CheckMod.exe \
+          || gh release upload "${GITHUB_REF_NAME}" dist/CheckMod.exe --clobber

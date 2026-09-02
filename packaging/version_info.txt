@@ -1,0 +1,33 @@
+# UTF-8
+#
+# Windows version resource for CheckMod.exe.
+# Shown in the file's Properties > Details tab. Corporate IT and security
+# teams look here first when an unsigned binary appears on a workstation, so
+# every field is filled in with something meaningful.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),
+    prodvers=(1, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          u'040904B0',
+          [StringStruct(u'FileDescription', u'CheckMod - moderation checklist & AHT companion'),
+           StringStruct(u'FileVersion', u'1.0.0.0'),
+           StringStruct(u'InternalName', u'CheckMod'),
+           StringStruct(u'OriginalFilename', u'CheckMod.exe'),
+           StringStruct(u'ProductName', u'CheckMod'),
+           StringStruct(u'ProductVersion', u'1.0.0.0'),
+           StringStruct(u'Comments', u'Portable, offline. No installation and no administrator rights required.')])
+      ]),
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)
