@@ -1,15 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller build recipe for the portable CheckMod executable.
+"""One-file build: a single portable CheckMod.exe.
 
-Goals, in order:
-
-1. **One file.** The user copies ``CheckMod.exe`` anywhere and double-clicks
-   it. No installer, no admin rights, nothing written outside the user's own
-   profile (or the folder next to the exe in portable mode).
-2. **Small.** Standard-library modules the app never touches are excluded,
-   which takes the build from ~25 MB to roughly 12 MB.
-3. **No console window.** ``console=False`` so no black terminal flashes
-   behind the floating window.
+The convenient layout - copy one file anywhere and double-click. It unpacks
+itself into %TEMP% at launch, which is what makes the first start take a
+second or two and what some antivirus heuristics dislike. For a locked-down
+corporate machine, prefer CheckModFolder.spec.
 
 Build with::
 
@@ -17,35 +12,22 @@ Build with::
 """
 
 import os
+import sys
 
-# ``SPECPATH`` is injected by PyInstaller and points at this file's folder.
-PROJECT_ROOT = os.path.dirname(os.path.abspath(SPECPATH))
-ASSETS = os.path.join(PROJECT_ROOT, "assets")
-ICON = os.path.join(ASSETS, "icon.ico")
+sys.path.insert(0, os.path.dirname(os.path.abspath(SPECPATH)) + "/packaging")
+import build_config as cfg  # noqa: E402
+
+ROOT = cfg.project_root(SPECPATH)
 
 a = Analysis(
-    [os.path.join(PROJECT_ROOT, "packaging", "launcher.py")],
-    pathex=[PROJECT_ROOT],
+    [cfg.entry_script(ROOT)],
+    pathex=[ROOT],
     binaries=[],
-    # Bundled read-only resources; resolved at runtime via
-    # checkmod.paths.resource_dir().
-    datas=[
-        (os.path.join(ASSETS, "icon.ico"), "assets"),
-        (os.path.join(ASSETS, "icon.png"), "assets"),
-    ],
+    datas=cfg.bundled_data(ROOT),
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],
-    # CheckMod is offline by design and imports none of these. Excluding them
-    # shrinks the binary and shrinks the attack surface a security reviewer
-    # has to consider.
-    excludes=[
-        "asyncio", "email", "http", "urllib.request", "xml", "xmlrpc",
-        "ssl", "socket", "ftplib", "smtplib", "telnetlib", "pydoc_data",
-        "unittest", "doctest", "pdb", "distutils", "setuptools", "pip",
-        "numpy", "pandas", "matplotlib", "PIL", "test", "lib2to3",
-        "sqlite3", "multiprocessing", "concurrent",
-    ],
+    excludes=cfg.EXCLUDES,
     noarchive=False,
 )
 
@@ -61,12 +43,10 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,               # UPX-packed binaries trip corporate AV heuristics.
+    upx=False,               # UPX packing is the top cause of AV false positives.
     runtime_tmpdir=None,
     console=False,           # No terminal window behind the floating UI.
     disable_windowed_traceback=False,
-    icon=ICON if os.path.exists(ICON) else None,
-    version=os.path.join(PROJECT_ROOT, "packaging", "version_info.txt")
-    if os.path.exists(os.path.join(PROJECT_ROOT, "packaging", "version_info.txt"))
-    else None,
+    icon=cfg.icon_path(ROOT),
+    version=cfg.version_file(ROOT),
 )

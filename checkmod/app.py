@@ -60,6 +60,7 @@ class App:
         self.theme = build_theme(self.config)
         self.fonts = build_fonts(self.config)
 
+        self.body: Optional[tk.Frame] = None
         self.titlebar: Optional[TitleBar] = None
         self.grip: Optional[ResizeGrip] = None
         self.view = None
@@ -206,7 +207,8 @@ class App:
         self.body.pack(fill="both", expand=True)
 
         if frameless:
-            footer = tk.Frame(self.root, bg=self.theme["bg_alt"], height=ResizeGrip.SIZE)
+            grip_size = ResizeGrip.size_for(self.fonts)
+            footer = tk.Frame(self.root, bg=self.theme["bg_alt"], height=grip_size)
             footer.pack(fill="x", side="bottom")
             footer.pack_propagate(False)
             self.grip = ResizeGrip(footer, self)
@@ -241,7 +243,7 @@ class App:
         width = self.root.winfo_width()
         if width <= 1:
             width = int(self.config.get("window.w", 360) or 360)
-        chrome = (TitleBar.HEIGHT + ResizeGrip.SIZE) if self.config.get("frameless") else 0
+        chrome = self.chrome_height()
         if self.config.get("compact"):
             height = COMPACT_BODY_H + chrome
         else:
@@ -252,6 +254,19 @@ class App:
             stored = int(self.config.get("window.h", 600) or 600)
             height = min(max(stored, needed), self.root.winfo_screenheight() - 60)
         self.root.geometry(f"{width}x{height}")
+
+    def chrome_height(self) -> int:
+        """Pixels taken by the custom title bar and resize grip (0 if native).
+
+        Derived from the live widgets when they exist so the value tracks the
+        font scale and the display's DPI, both of which change how tall the
+        title bar has to be.
+        """
+        if not self.config.get("frameless", True):
+            return 0
+        bar = self.titlebar.height if self.titlebar else TitleBar.height_for(self.fonts)
+        grip = self.grip.SIZE if self.grip else ResizeGrip.size_for(self.fonts)
+        return bar + grip
 
     def refresh_views(self) -> None:
         """Light refresh: no widget tree rebuild."""
@@ -471,11 +486,17 @@ class App:
     # Tutorial
     # ------------------------------------------------------------------
     def show_tutorial(self) -> None:
-        """Open the walkthrough overlay (idempotent)."""
+        """Open the walkthrough overlay (idempotent).
+
+        The overlay covers the body only, never the title bar: a tutorial you
+        cannot drag out of the way is worse than no tutorial, and the pin and
+        close buttons have to stay reachable too.
+        """
         if self.tutorial is not None:
             return
-        self.tutorial = Tutorial(self.root, self, on_close=self._on_tutorial_closed)
-        self.tutorial.place(relx=0, rely=0, relwidth=1, relheight=1)
+        parent = self.body if self.body is not None else self.root
+        self.tutorial = Tutorial(parent, self, on_close=self._on_tutorial_closed)
+        self.tutorial.place(in_=parent, relx=0, rely=0, relwidth=1, relheight=1)
         self.tutorial.lift()
 
     def _on_tutorial_closed(self) -> None:

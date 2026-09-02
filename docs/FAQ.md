@@ -63,15 +63,33 @@ record schema has no field for anything that identifies a person or a case.
 ## Problems
 
 **Windows SmartScreen says "unrecognised app".**
-Expected for an unsigned executable. Click *More info → Run anyway*, or see
-[BUILD.md](BUILD.md#antivirus-and-smartscreen) for signing, hash
-allow-listing, and running from source instead.
+Expected for any newly built, unsigned executable. SmartScreen is a
+*reputation* check — how many people have downloaded this exact file and
+whether it is signed — not a malware verdict. Click *More info → Run anyway*.
+It goes away for good only with a code-signing certificate; see
+[IT-APPROVAL.md](IT-APPROVAL.md).
 
-**Antivirus flagged it.**
-A known false-positive class for unsigned PyInstaller binaries. The build
-avoids UPX compression, which is the usual trigger. The most reliable answer
-in a corporate setting is to build it in-house from this repository — see
-[BUILD.md](BUILD.md).
+**Antivirus flagged it, and IT thinks it is a virus.**
+A known false-positive class for unsigned PyInstaller binaries. Three things
+help, in order:
+
+1. **Use `CheckMod-folder.zip` instead of the single exe.** The one-file build
+   unpacks itself into `%TEMP%` at launch and runs from there — behaviour that
+   resembles a dropper. The folder build extracts nothing, which removes the
+   trigger. It also starts instantly.
+2. **Give IT the hash.** Every release ships `SHA256SUMS.txt` so the exact
+   build can be allow-listed rather than granted a blanket exception.
+3. **Build it in-house**, or skip the binary and run from source — nothing to
+   approve beyond Python itself.
+
+[IT-APPROVAL.md](IT-APPROVAL.md) is a one-page summary written for whoever
+approves software on your machines: what it does, what it touches, why the
+warning appears, and how to verify every claim.
+
+**Which download should my team use?**
+`CheckMod-folder.zip` on a managed corporate machine — unzip anywhere and run
+the exe inside. `CheckMod.exe` if you just want one file and your machine is
+not locked down. They are the same application.
 
 **Nothing happens when I double-click the exe.**
 Wait a couple of seconds: a one-file build unpacks itself before starting.
@@ -81,6 +99,13 @@ from source with `python -m checkmod`.
 **`ModuleNotFoundError: No module named 'tkinter'` when running from source.**
 Tk is a separate package on Linux: `sudo apt install python3-tk`. On Windows,
 re-run the Python installer and tick *tcl/tk and IDLE*.
+
+**The top bar looks cut off / the title is squashed against the top edge.**
+Fixed in 1.0.1. The bar was a hard-coded 34 px, which is too short once
+Windows display scaling is above 125% — and the frozen exe is DPI-aware, so it
+sees the real scaling. The bar now sizes itself from the font metrics. If you
+are on 1.0.0, updating fixes it; raising or lowering *Dev Mode → Style → Text
+scale* is the workaround.
 
 **The text is too small / too large.**
 *Dev Mode → Style → Text scale* (0.8× – 1.4×). The window resizes itself to

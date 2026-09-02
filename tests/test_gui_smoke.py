@@ -151,3 +151,85 @@ def test_adding_a_checklist_item_reaches_the_session_and_the_rows(app):
     app.root.update()
     assert "extra" in app.session.checks
     assert "extra" in app.view.checklist.rows
+
+
+# ----------------------------------------------------------------------
+# Regressions
+# ----------------------------------------------------------------------
+def test_the_title_bar_paints_across_the_full_height_of_the_bar(app):
+    """The bar used to draw everything at y~0 until something forced a repaint.
+
+    ``winfo_height()`` returns 1 before a widget is first laid out, and 1 is
+    truthy, so the old ``winfo_height() or HEIGHT`` fallback never triggered
+    and the title ended up crammed into the top few pixels.
+    """
+    app.root.update()
+    bar = app.titlebar
+    height = bar.handle.winfo_height()
+    bbox = bar.handle.bbox("all")
+    assert bbox is not None, "the title bar painted nothing"
+    assert bbox[3] > height * 0.55, (
+        f"title bar content stops at y={bbox[3]} in a {height}px bar - it is clipped")
+    assert bbox[1] < height * 0.45, "title bar content is not vertically centred"
+
+
+def test_the_title_bar_repaints_when_it_is_resized(app):
+    """A <Configure> binding keeps the bar correct after any layout change."""
+    app.root.update()
+    app.resize_window(520, app.root.winfo_height())
+    app.root.update()
+    before = app.titlebar.handle.bbox("all")
+    app.resize_window(300, app.root.winfo_height())
+    app.root.update()
+    after = app.titlebar.handle.bbox("all")
+    assert before is not None and after is not None
+
+
+def test_the_title_bar_grows_with_the_text_scale(app):
+    """Chrome sized from font metrics, so a bigger font is never clipped."""
+    from checkmod.ui.titlebar import TitleBar
+
+    previous = 0
+    for scale in (0.8, 1.0, 1.2, 1.4):
+        app.config.set("font_scale", scale)
+        app._restyle_now()
+        app.root.update()
+        bar = app.titlebar
+        needed = app.fonts.height("title")
+        assert bar.height >= needed + 8, (
+            f"at scale {scale} the bar is {bar.height}px but the title needs {needed}px")
+        assert bar.height >= previous, "bar height should grow with the text scale"
+        previous = bar.height
+        assert bar.height == TitleBar.height_for(app.fonts)
+
+
+def test_the_tutorial_leaves_the_title_bar_reachable(app):
+    """A walkthrough that covers the drag handle traps the window."""
+    app.show_tutorial()
+    app.root.update()
+    overlay = app.tutorial
+    assert overlay is not None
+    # The overlay lives inside the body, not over the whole window.
+    assert overlay.winfo_toplevel() is app.root
+    assert overlay.winfo_rooty() >= app.titlebar.winfo_rooty() + app.titlebar.winfo_height()
+    # ...and the title bar is still mapped and on screen.
+    assert app.titlebar.winfo_ismapped()
+    overlay.close()
+
+
+def test_the_window_can_be_dragged_while_the_tutorial_is_open(app):
+    """The tutorial's own header moves the window too."""
+    app.root.update()
+    app.show_tutorial()
+    app.root.update()
+
+    class FakeEvent:
+        x_root = 400
+        y_root = 300
+
+    app.tutorial._on_drag_press(FakeEvent())
+    moved = FakeEvent()
+    moved.x_root, moved.y_root = 460, 340
+    app.tutorial._on_drag_motion(moved)
+    app.root.update()
+    app.tutorial.close()

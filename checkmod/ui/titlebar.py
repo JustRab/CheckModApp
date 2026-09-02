@@ -23,14 +23,39 @@ from .primitives import Button, Tooltip, draw_round_rect
 
 
 class TitleBar(tk.Frame):
-    """Draggable header with the app's window controls."""
+    """Draggable header with the app's window controls.
 
+    The bar sizes itself from font metrics rather than a fixed pixel height.
+    That matters more than it sounds: PyInstaller marks the frozen executable
+    DPI-aware, so on a display running at 150% scaling Tk renders an 11 pt
+    font at ~27 px instead of ~18 px. A hard-coded 34 px bar clips the title
+    and the buttons on exactly the machines this app is meant to run on - and
+    it clips them again whenever a user raises the text scale in Dev Mode.
+    """
+
+    #: Never go below this, however small the font.
+    MIN_HEIGHT = 30
+
+    #: Fallback for callers that need a height estimate before a bar exists.
     HEIGHT = 34
+
+    @classmethod
+    def height_for(cls, fonts) -> int:
+        """Bar height that fits the title text and the icon buttons."""
+        return max(cls.MIN_HEIGHT,
+                   fonts.height("title") + 12,
+                   cls.button_height(fonts) + 8)
+
+    @staticmethod
+    def button_height(fonts) -> int:
+        """Height of one square icon button, derived from the glyph font."""
+        return max(22, fonts.height("glyph") + 6)
 
     def __init__(self, parent, app) -> None:
         self.app = app
         theme = app.theme
-        super().__init__(parent, bg=theme["bg_alt"], height=self.HEIGHT)
+        self.height = self.height_for(app.fonts)
+        super().__init__(parent, bg=theme["bg_alt"], height=self.height)
         self.pack_propagate(False)
 
         self._drag_origin: Optional[tuple] = None
@@ -38,8 +63,13 @@ class TitleBar(tk.Frame):
 
         # --- drag handle (dot + title) --------------------------------
         self.handle = tk.Canvas(self, bg=theme["bg_alt"], highlightthickness=0,
-                                bd=0, height=self.HEIGHT)
+                                bd=0, height=self.height)
         self.handle.pack(side="left", fill="both", expand=True)
+        # Repaint whenever the canvas is laid out or resized. Without this the
+        # bar keeps whatever it drew before it had a real size, which left the
+        # title crammed into the top few pixels until something else forced a
+        # repaint (a resize, or a theme change).
+        self.handle.bind("<Configure>", lambda _event: self._paint_handle())
         for sequence, callback in (
             ("<Button-1>", self._on_press),
             ("<B1-Motion>", self._on_drag),
@@ -50,29 +80,36 @@ class TitleBar(tk.Frame):
             self.bind(sequence, callback)
 
         # --- window controls ------------------------------------------
-        self.btn_close = self._icon_button("×", app.request_close, "tb.close", 18)
-        self.btn_compact = self._icon_button("—", app.toggle_compact, "tb.compact", 15)
-        self.btn_pin = self._icon_button("•", app.toggle_on_top, "tb.pin_on", 16)
+        button_h = self.button_height(app.fonts)
+        pad_y = max(2, (self.height - button_h) // 2)
+        self.btn_close = self._icon_button("×", app.request_close, "tb.close")
+        self.btn_compact = self._icon_button("—", app.toggle_compact, "tb.compact")
+        self.btn_pin = self._icon_button("•", app.toggle_on_top, "tb.pin_on")
+        chip_h = max(20, app.fonts.height("tiny_bold") + 6)
         self.btn_mode = Button(
             self, theme, app.fonts, text="DEV", command=app.toggle_mode,
-            variant="outline", height=22, radius=6, bg_token="bg_alt",
-            font_key="tiny_bold", width=46, tooltip=app.t("mode.to_dev"),
+            variant="outline", height=chip_h, radius=6, bg_token="bg_alt",
+            font_key="tiny_bold", width=app.fonts.measure("USER", "tiny_bold") + 22,
+            tooltip=app.t("mode.to_dev"),
         )
-        self.btn_mode.pack(side="right", padx=(4, 6), pady=6)
-        self.btn_help = self._icon_button("?", app.show_tutorial, "tb.help", 14)
+        self.btn_mode.pack(side="right", padx=(4, 6),
+                           pady=max(2, (self.height - chip_h) // 2))
+        self.btn_help = self._icon_button("?", app.show_tutorial, "tb.help")
+        self._button_pad_y = pad_y
 
         self.refresh()
 
     # ------------------------------------------------------------------
     def _icon_button(self, glyph: str, command: Callable[[], None],
-                     tooltip_key: str, size: int) -> Button:
+                     tooltip_key: str) -> Button:
         """Create one square icon button, packed to the right edge."""
+        size = self.button_height(self.app.fonts)
         button = Button(
             self, self.app.theme, self.app.fonts, text=glyph, command=command,
-            variant="icon", height=24, radius=6, bg_token="bg_alt",
-            font_key="glyph", width=26, tooltip=self.app.t(tooltip_key),
+            variant="icon", height=size, radius=6, bg_token="bg_alt",
+            font_key="glyph", width=size + 2, tooltip=self.app.t(tooltip_key),
         )
-        button.pack(side="right", padx=1, pady=5)
+        button.pack(side="right", padx=1, pady=max(2, (self.height - size) // 2))
         return button
 
     # ------------------------------------------------------------------
@@ -108,23 +145,31 @@ class TitleBar(tk.Frame):
     def _paint_handle(self) -> None:
         canvas = self.handle
         canvas.delete("all")
-        height = canvas.winfo_height() or self.HEIGHT
+        # winfo_height() returns 1 until the widget is first laid out, and 1 is
+        # truthy - so `or self.height` would not have caught it.
+        height = canvas.winfo_height()
+        if height <= 1:
+            height = self.height
+        width = canvas.winfo_width()
         theme = self.app.theme
         cy = height / 2
         # Status dot with a soft halo.
         canvas.create_oval(10, cy - 7, 24, cy + 7, fill="", outline=self._status_color,
                            width=1)
         canvas.create_oval(14, cy - 3, 20, cy + 3, fill=self._status_color, outline="")
+        # (Fixed-size dot: it reads as a status light, not as text, so it does
+        # not need to grow with the font.)
         canvas.create_text(32, cy, anchor="w", text="CheckMod", fill=theme["text"],
                            font=self.app.fonts["title"])
         # Mode chip so the current mode is obvious without opening anything.
         label = self.app.t("mode.dev" if self.app.config.get("mode") == "dev" else "mode.user")
         x = 32 + self.app.fonts.measure("CheckMod", "title") + 10
-        width = self.app.fonts.measure(label, "tiny") + 14
-        if x + width < (canvas.winfo_width() or 0):
-            draw_round_rect(canvas, x, cy - 8, x + width, cy + 8, 8,
+        chip_w = self.app.fonts.measure(label, "tiny") + 14
+        if width > 1 and x + chip_w < width:
+            half = max(8, self.app.fonts.height("tiny") // 2 + 2)
+            draw_round_rect(canvas, x, cy - half, x + chip_w, cy + half, half,
                             fill=theme["surface"], outline=theme["border"])
-            canvas.create_text(x + width / 2, cy, text=label, fill=theme["text_faint"],
+            canvas.create_text(x + chip_w / 2, cy, text=label, fill=theme["text_faint"],
                                font=self.app.fonts["tiny"])
 
     def refresh(self) -> None:
@@ -144,7 +189,8 @@ class TitleBar(tk.Frame):
 
     def restyle(self, theme, fonts) -> None:
         """Repaint after a theme or font change."""
-        self.configure(bg=theme["bg_alt"])
+        self.height = self.height_for(fonts)
+        self.configure(bg=theme["bg_alt"], height=self.height)
         self.handle.configure(bg=theme["bg_alt"])
         for button in (self.btn_close, self.btn_compact, self.btn_pin,
                        self.btn_mode, self.btn_help):
@@ -155,10 +201,18 @@ class TitleBar(tk.Frame):
 class ResizeGrip(tk.Canvas):
     """Bottom-right corner grip used to resize a frameless window."""
 
+    #: Fallback for callers estimating chrome height before a grip exists.
     SIZE = 14
+
+    @classmethod
+    def size_for(cls, fonts) -> int:
+        """Grip size, scaled so it stays grabbable on a high-DPI display."""
+        return max(cls.SIZE, int(round(cls.SIZE * fonts.scale)),
+                   fonts.height("tiny") + 2)
 
     def __init__(self, parent, app) -> None:
         self.app = app
+        self.SIZE = self.size_for(app.fonts)
         super().__init__(parent, width=self.SIZE, height=self.SIZE,
                          bg=app.theme["bg_alt"], highlightthickness=0, bd=0,
                          cursor="bottom_right_corner")

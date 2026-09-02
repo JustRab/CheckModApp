@@ -36,6 +36,7 @@ class Tutorial(tk.Frame):
         self.app = app
         self.on_close = on_close
         self.index = 0
+        self._drag_origin = None
         super().__init__(parent, bg=app.theme["bg"], highlightthickness=0, bd=0)
         self._build()
 
@@ -43,11 +44,19 @@ class Tutorial(tk.Frame):
         app = self.app
         theme, fonts = app.theme, app.fonts
 
-        header = tk.Frame(self, bg=theme["bg_alt"], height=30)
+        header_h = max(28, fonts.height("small_bold") + 10)
+        header = tk.Frame(self, bg=theme["bg_alt"], height=header_h)
         header.pack(fill="x")
         header.pack_propagate(False)
-        tk.Label(header, text=app.t("tut.title"), bg=theme["bg_alt"], fg=theme["text_dim"],
-                 font=fonts["small_bold"]).pack(side="left", padx=12)
+        caption = tk.Label(header, text=app.t("tut.title"), bg=theme["bg_alt"],
+                           fg=theme["text_dim"], font=fonts["small_bold"])
+        caption.pack(side="left", padx=12)
+        # Dragging this header moves the window too, so the walkthrough never
+        # traps the app in an inconvenient spot.
+        for widget in (header, caption):
+            widget.bind("<Button-1>", self._on_drag_press)
+            widget.bind("<B1-Motion>", self._on_drag_motion)
+            widget.bind("<ButtonRelease-1>", lambda _e: app.snap_and_store())
         Button(header, theme, fonts, text="×", command=self.close, variant="icon",
                height=22, radius=6, bg_token="bg_alt", width=24,
                font_key="glyph").pack(side="right", padx=6)
@@ -96,6 +105,18 @@ class Tutorial(tk.Frame):
         self.bind_all("<Left>", lambda _e: self.prev_step(), add="+")
         self.bind_all("<Right>", lambda _e: self.next_step(), add="+")
         self._render()
+
+    # ------------------------------------------------------------------
+    # Window dragging (mirrors TitleBar so either bar can move the window)
+    # ------------------------------------------------------------------
+    def _on_drag_press(self, event) -> None:
+        self._drag_origin = (event.x_root - self.app.root.winfo_x(),
+                             event.y_root - self.app.root.winfo_y())
+
+    def _on_drag_motion(self, event) -> None:
+        origin = getattr(self, "_drag_origin", None)
+        if origin:
+            self.app.move_window(event.x_root - origin[0], event.y_root - origin[1])
 
     # ------------------------------------------------------------------
     def next_step(self) -> None:
