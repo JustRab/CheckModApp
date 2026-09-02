@@ -105,7 +105,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          files="dist/CheckMod.exe dist/CheckMod-folder.zip dist/SHA256SUMS.txt"
+          # An array, not a space-separated string: the latter relies on word
+          # splitting, which shellcheck flags (SC2086) and which breaks the
+          # moment a path contains a space.
+          files=(dist/CheckMod.exe dist/CheckMod-folder.zip dist/SHA256SUMS.txt)
           gh release create "${GITHUB_REF_NAME}" \
             --title "CheckMod ${GITHUB_REF_NAME}" \
             --notes "Portable build - no installation and no administrator rights required.
@@ -117,5 +120,5 @@ jobs:
           * **SHA256SUMS.txt** - hashes, so IT can allow-list the exact build.
 
           See docs/IT-APPROVAL.md for the summary an IT or security reviewer needs." \
-            $files \
-          || gh release upload "${GITHUB_REF_NAME}" $files --clobber
+            "${files[@]}" \
+          || gh release upload "${GITHUB_REF_NAME}" "${files[@]}" --clobber

@@ -46,6 +46,10 @@ jobs:
       - name: Lint the GitHub Actions workflows
         if: matrix.python-version == '3.12'
         run: |
+          # actionlint shells out to shellcheck for `run:` blocks and silently
+          # skips those checks when it is missing - install it explicitly so a
+          # local run and a CI run report the same thing.
+          sudo apt-get install -y --no-install-recommends shellcheck
           python -m pip install actionlint-py
           actionlint .github/workflows/*.yml
 
