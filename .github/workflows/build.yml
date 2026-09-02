@@ -19,6 +19,11 @@ jobs:
   build:
     name: CheckMod.exe
     runs-on: windows-latest
+    env:
+      # The `secrets` context is not available in a step-level `if`, so the
+      # presence of a signing certificate is surfaced here as a plain string
+      # the condition can read.
+      HAS_SIGNING_CERT: ${{ secrets.WINDOWS_CERT_PFX_BASE64 != '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +58,7 @@ jobs:
       # flags. It runs only when an organisation has supplied a certificate,
       # so forks and unsigned builds still work unchanged.
       - name: Sign the executables
-        if: ${{ secrets.WINDOWS_CERT_PFX_BASE64 != '' }}
+        if: env.HAS_SIGNING_CERT == 'true'
         shell: pwsh
         env:
           PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
@@ -100,7 +105,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          files="dist/CheckMod.exe dist/CheckMod-folder.zip dist/SHA256SUMS.txt"
+          # An array, not a space-separated string: the latter relies on word
+          # splitting, which shellcheck flags (SC2086) and which breaks the
+          # moment a path contains a space.
+          files=(dist/CheckMod.exe dist/CheckMod-folder.zip dist/SHA256SUMS.txt)
           gh release create "${GITHUB_REF_NAME}" \
             --title "CheckMod ${GITHUB_REF_NAME}" \
             --notes "Portable build - no installation and no administrator rights required.
@@ -112,5 +120,5 @@ jobs:
           * **SHA256SUMS.txt** - hashes, so IT can allow-list the exact build.
 
           See docs/IT-APPROVAL.md for the summary an IT or security reviewer needs." \
-            $files \
-          || gh release upload "${GITHUB_REF_NAME}" $files --clobber
+            "${files[@]}" \
+          || gh release upload "${GITHUB_REF_NAME}" "${files[@]}" --clobber
