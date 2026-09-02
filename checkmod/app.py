@@ -28,7 +28,7 @@ from . import APP_NAME, __version__, paths
 from .config import Config
 from .history import History
 from .i18n import Translator
-from .session import Session
+from .session import Session, format_duration
 from .theme import build_theme
 from .ui import dialogs
 from .ui.dev_view import DevView
@@ -79,6 +79,7 @@ class App:
         cases = self.config.active_cases()
         if cases:
             self.session.bind_case(cases[0], autostart=False)
+            self.apply_adaptive_target()
         self.sync_checklist()
 
         if self.config.get("first_run", True):
@@ -100,7 +101,7 @@ class App:
         root = self.root
         root.title(f"{APP_NAME} {__version__}")
         root.configure(bg=self.theme["bg"])
-        root.minsize(280, 160)
+        root.minsize(280, 200)   # refined once the chrome exists
         self._load_icon()
 
         geometry = self.config.get("window", {}) or {}
@@ -158,6 +159,7 @@ class App:
             "<Control-t>": lambda _e: self.toggle_on_top(),
             "<Control-m>": lambda _e: self.toggle_compact(),
             "<Control-q>": lambda _e: self.request_close(),
+            "<Control-z>": lambda _e: self._guarded(self.undo_last_case),
             "<F1>": lambda _e: self.show_tutorial(),
             "<Escape>": lambda _e: self._on_escape(),
         }
@@ -203,9 +205,10 @@ class App:
             self.titlebar = None
             self.root.title(f"{APP_NAME} {__version__}")
 
-        self.body = tk.Frame(self.root, bg=self.theme["bg"])
-        self.body.pack(fill="both", expand=True)
-
+        # Pack the footer BEFORE the body. Tk hands out space in packing
+        # order and `body` expands, so a footer packed after it is the first
+        # thing squeezed to zero height when the window shrinks - taking the
+        # resize grip with it and leaving the window impossible to enlarge.
         if frameless:
             grip_size = ResizeGrip.size_for(self.fonts)
             footer = tk.Frame(self.root, bg=self.theme["bg_alt"], height=grip_size)
@@ -216,7 +219,13 @@ class App:
         else:
             self.grip = None
 
+        self.body = tk.Frame(self.root, bg=self.theme["bg"])
+        self.body.pack(fill="both", expand=True)
+
         self._build_view()
+        # Now that the chrome exists its real height is known, so the window
+        # can be stopped from shrinking past it.
+        self.root.minsize(280, self.min_window_height())
         self._apply_layout_size()
 
     def _build_view(self) -> None:
@@ -313,10 +322,14 @@ class App:
         """Move the window during a title-bar drag."""
         self.root.geometry(f"+{int(x)}+{int(y)}")
 
+    def min_window_height(self) -> int:
+        """Smallest height that still shows the title bar, grip and content."""
+        return self.chrome_height() + 80
+
     def resize_window(self, width: int, height: int) -> None:
         """Resize from the grip, respecting sane minimums."""
         width = max(280, min(900, int(width)))
-        height = max(160, min(1400, int(height)))
+        height = max(self.min_window_height(), min(1400, int(height)))
         self.root.geometry(f"{width}x{height}")
 
     def _clamp_to_screen(self, x: int, y: int, width: int, height: int) -> Tuple[int, int]:
@@ -408,7 +421,50 @@ class App:
         # reclassify a case after opening it.
         self.session.bind_case(case, autostart=bool(self.config.get("auto_start_on_select", True)))
         self._over_alerted = False
+        self.session.prealert_fired = False
+        self.session.over_alert_fired = False
+        # The checklist differs per case type (Evidence Adherence does not
+        # apply to a Voice or Text chat), so re-derive it before painting.
+        self.sync_checklist()
+        self.apply_adaptive_target()
         self.refresh_views()
+
+    # ------------------------------------------------------------------
+    # Adaptive AHT
+    # ------------------------------------------------------------------
+    def weekly_plan(self):
+        """This week's AHT position and recovery plan, per case type."""
+        return self.history.weekly_plan(
+            self.config.get("case_types", []),
+            recovery_cases=int(self.config.get("adaptive_recovery_cases", 10)),
+            min_factor=float(self.config.get("adaptive_min_factor", 0.6)),
+            max_factor=float(self.config.get("adaptive_max_factor", 1.25)),
+            starts_on=self.config.get("week_starts_on", "sunday"),
+        )
+
+    def adaptive_target_for(self, case_id):
+        """Target the timer should use for ``case_id`` right now.
+
+        With adaptive targeting off - or with no history to go on - this is
+        simply the configured target.
+        """
+        case = self.config.case_by_id(case_id)
+        if not case:
+            return 0
+        base = int(case.get("target_s", 0) or 0)
+        if not self.config.get("adaptive_target", True) or not self.config.get(
+                "history_enabled", True):
+            return base
+        entry = self.weekly_plan().get(case_id)
+        if not entry or not entry["count"]:
+            return base
+        return int(entry["adaptive_target_s"])
+
+    def apply_adaptive_target(self) -> None:
+        """Push the current adaptive target onto the live session."""
+        if self.session.case_id is None:
+            return
+        self.session.set_target(self.adaptive_target_for(self.session.case_id))
 
     def _select_case_index(self, index: int) -> None:
         cases = self.config.active_cases()
@@ -449,6 +505,37 @@ class App:
             self.history.append(record)
         session.reset(keep_case=True)
         self._over_alerted = False
+        # The case just logged moves the weekly average, so the next case's
+        # target is recalculated from it.
+        self.apply_adaptive_target()
+        self.refresh_views()
+
+    def undo_last_case(self) -> None:
+        """Remove the most recently logged case, restoring it when possible.
+
+        Agents mis-click Complete, and one wrong record skews the weekly
+        average that now drives the adaptive target. If the current session is
+        untouched the case is put back on the clock, paused, so it can be
+        corrected and completed again; otherwise it is simply deleted.
+        """
+        records = self.history.load()
+        if not records:
+            dialogs.alert(self, self.t("dlg.nothing_to_undo"))
+            return
+        last = records[-1]
+        summary = f"{last.get('case_name', '?')} - {format_duration(last.get('duration_s', 0))}"
+        if not dialogs.confirm(self, self.t("dlg.undo_q", case=summary)):
+            return
+
+        removed = self.history.remove_last()
+        if removed is None:
+            dialogs.alert(self, self.t("dlg.failed"))
+            return
+
+        if not self.session.has_activity:
+            self.session.restore(removed)
+            self.sync_checklist()
+        self.apply_adaptive_target()
         self.refresh_views()
 
     def on_check_toggled(self, _check_id: str, _value: bool) -> None:
@@ -458,8 +545,12 @@ class App:
             self.view._sync_mini_checks()   # noqa: SLF001
 
     def sync_checklist(self) -> None:
-        """Mirror the configured checklist into the session and rebuild rows."""
-        self.session.sync_checks(self.config.active_checks())
+        """Mirror the configured checklist into the session and rebuild rows.
+
+        Only the items that apply to the selected case type are used, so a
+        Voice Chat never shows Evidence Adherence.
+        """
+        self.session.sync_checks(self.config.active_checks(self.session.case_id))
         if isinstance(self.view, UserView) and self.view.checklist is not None:
             self.view.checklist.rebuild()
             self.view.sync()
@@ -511,6 +602,7 @@ class App:
             if isinstance(self.view, UserView):
                 self.view.tick()
             self._update_status_dot()
+            self._check_prealert()
             self._check_over_alert()
         except tk.TclError:  # pragma: no cover - window closing
             return
@@ -533,6 +625,36 @@ class App:
                 color = self.theme["bg_alt"]
         self.titlebar.set_status_color(color)
 
+    def _check_prealert(self) -> None:
+        """Sound a heads-up a few seconds before the target is reached.
+
+        Fires once per case. The point is to prompt wrapping up *while there
+        is still time*, rather than announcing an overrun after the fact.
+        """
+        session = self.session
+        if session.prealert_fired or not self.config.get("prealert_enabled", True):
+            return
+        lead = int(self.config.get("prealert_seconds", 10))
+        if lead <= 0 or session.target_s <= 0 or session.state != "running":
+            return
+        remaining = session.remaining
+        if remaining > lead:
+            return
+        session.prealert_fired = True
+        if remaining <= 0:
+            return          # already past the target; the over-alert covers it
+        if self.config.get("sound_enabled", False):
+            self._beep(pattern=(1180, 90))
+        self._flash_prealert()
+
+    def _flash_prealert(self, times: int = 4) -> None:
+        """Blink the title-bar status dot so the heads-up is visible too."""
+        if not self.titlebar or times <= 0:
+            return
+        color = self.theme["warn"] if times % 2 else self.theme["bg_alt"]
+        self.titlebar.set_status_color(color)
+        self.root.after(120, lambda: self._flash_prealert(times - 1))
+
     def _check_over_alert(self) -> None:
         """Beep once, at most, when a case first passes its AHT target."""
         if self._over_alerted or not self.config.get("alert_on_over", True):
@@ -542,16 +664,23 @@ class App:
         if self.session.elapsed < self.session.target_s:
             return
         self._over_alerted = True
+        self.session.over_alert_fired = True
         if self.config.get("sound_enabled", False):
-            self._beep()
+            # Two low tones, clearly different from the single high pre-alert.
+            self._beep(pattern=(660, 160))
+            self.root.after(200, lambda: self._beep(pattern=(660, 160)))
 
-    def _beep(self) -> None:
-        """Play a short alert using only what the platform already provides."""
+    def _beep(self, pattern=(880, 140)) -> None:
+        """Play a short alert using only what the platform already provides.
+
+        ``pattern`` is ``(frequency_hz, duration_ms)``. Elsewhere Tk's bell is
+        the only thing guaranteed to exist, so the pitch is ignored there.
+        """
         try:
             if sys.platform.startswith("win"):
                 import winsound
 
-                winsound.Beep(880, 140)
+                winsound.Beep(int(pattern[0]), int(pattern[1]))
             else:
                 self.root.bell()
         except Exception:
@@ -568,6 +697,7 @@ class App:
             ("Alt+1-9", self.t("user.case_type")),
             ("Ctrl+Enter", self.t("user.complete")),
             ("Ctrl+R", self.t("user.reset")),
+            ("Ctrl+Z", self.t("user.undo_last")),
             ("Ctrl+D", self.t("mode.to_dev")),
             ("Ctrl+T", self.t("dev.always_on_top")),
             ("Ctrl+M", self.t("tb.compact")),
@@ -577,7 +707,7 @@ class App:
 
     def _toggle_check_index(self, index: int) -> None:
         """Toggle the n-th checklist item (number-key shortcut)."""
-        items = self.config.active_checks()
+        items = self.config.active_checks(self.session.case_id)
         if not (0 <= index < len(items)):
             return
         check_id = items[index]["id"]

@@ -20,7 +20,7 @@ Design constraints that drive this whole package:
 __all__ = ["__version__", "APP_NAME", "APP_TAGLINE"]
 
 #: Semantic version, surfaced in the About panel and in built artifacts.
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 
 #: Product name used for window titles and the data directory.
 APP_NAME = "CheckMod"

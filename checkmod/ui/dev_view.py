@@ -376,6 +376,32 @@ class DevView(tk.Frame):
                                  width=30, font_key="tiny")
         hint_entry.pack(fill="x", padx=10, ipady=3)
 
+        # Applicability chips: an item can be required for some case types
+        # only (Evidence Adherence does not apply to a Voice or Text chat).
+        applies = tk.Frame(card, bg=theme["surface"])
+        applies.pack(fill="x", padx=10, pady=(8, 0))
+        selected = list(item.get("applies_to") or [])
+        tk.Label(applies, text=app.t("dev.applies_to"), bg=theme["surface"],
+                 fg=theme["text_faint"], font=fonts["tiny"], anchor="w").pack(
+            side="left", padx=(0, 6))
+        chips = tk.Frame(card, bg=theme["surface"])
+        chips.pack(fill="x", padx=10, pady=(2, 0))
+        Button(chips, theme, fonts, text=app.t("dev.applies_all"),
+               command=lambda i=item: self._commit_check(i, "applies_to", []),
+               variant="primary" if not selected else "soft",
+               height=22, radius=6, bg_token="surface", font_key="tiny",
+               width=fonts.measure(app.t("dev.applies_all"), "tiny") + 16).pack(
+            side="left", padx=(0, 4), pady=2)
+        for case in app.config.get("case_types", []):
+            on = case["id"] in selected
+            Button(chips, theme, fonts, text=case["name"][:10],
+                   command=lambda i=item, c=case["id"]: self._toggle_applies(i, c),
+                   variant="primary" if on else "soft", height=22, radius=6,
+                   bg_token="surface", font_key="tiny",
+                   accent=case.get("color") if on else None,
+                   width=fonts.measure(case["name"][:10], "tiny") + 16).pack(
+                side="left", padx=2, pady=2)
+
         bottom = tk.Frame(card, bg=theme["surface"])
         bottom.pack(fill="x", padx=10, pady=(6, 10))
         tk.Label(bottom, text=app.t("dev.hint"), bg=theme["surface"],
@@ -395,6 +421,7 @@ class DevView(tk.Frame):
     # -- behaviour -----------------------------------------------------
     def _section_behavior(self, parent) -> None:
         app = self.app
+        theme, fonts = app.theme, app.fonts
         self._heading(parent, app.t("dev.behavior"))
         card = self._card(parent)
         self._switch_row(card, app.t("dev.auto_start"), "auto_start_on_select")
@@ -407,8 +434,35 @@ class DevView(tk.Frame):
         card = self._card(parent)
         self._slider_row(card, app.t("dev.warn_pct"), "warn_at_pct", 10, 100, 5,
                          lambda v: f"{int(v)}%")
+        self._switch_row(card, app.t("dev.prealert"), "prealert_enabled")
+        self._slider_row(card, app.t("dev.prealert_seconds"), "prealert_seconds",
+                         0, 60, 1,
+                         lambda v: (app.t("misc.none") if v <= 0 else f"{int(v)} s"))
         self._switch_row(card, app.t("dev.alert_over"), "alert_on_over")
         self._switch_row(card, app.t("dev.sound"), "sound_enabled")
+
+        self._heading(parent, app.t("dev.adaptive"),
+                      "The timer target tracks this week's average for the case "
+                      "type, so a slow case makes the next few ask for a little "
+                      "less. Turn it off to always use the configured target.")
+        card = self._card(parent)
+        self._switch_row(card, app.t("dev.adaptive"), "adaptive_target",
+                         on_change=lambda _v: app.apply_adaptive_target())
+        self._slider_row(card, app.t("dev.adaptive_cases"), "adaptive_recovery_cases",
+                         1, 50, 1,
+                         lambda v: f"{int(v)} {app.t('misc.cases')}",
+                         on_change=lambda _v: app.apply_adaptive_target())
+        self._slider_row(card, app.t("dev.adaptive_min"), "adaptive_min_factor",
+                         0.2, 1.0, 0.05, lambda v: f"{int(v * 100)}%",
+                         on_change=lambda _v: app.apply_adaptive_target())
+        self._slider_row(card, app.t("dev.adaptive_max"), "adaptive_max_factor",
+                         1.0, 2.0, 0.05, lambda v: f"{int(v * 100)}%",
+                         on_change=lambda _v: app.apply_adaptive_target())
+        row = self._row(card, app.t("dev.week_start"))
+        Button(row, theme, fonts,
+               text="Sunday" if app.config.get("week_starts_on") == "sunday" else "Monday",
+               command=self._toggle_week_start, variant="outline", height=26,
+               radius=7, bg_token="surface", width=90, font_key="tiny").pack(side="right")
 
     # -- data & privacy ------------------------------------------------
     def _section_data(self, parent) -> None:
@@ -431,6 +485,7 @@ class DevView(tk.Frame):
         row = self._row(card, app.t("dev.portable"), str(paths.portable_marker_path()))
         Switch(row, theme, fonts, value=paths.is_portable(),
                on_change=self._toggle_portable, bg_token="surface").pack(side="right")
+        self._action(card, app.t("dev.undo_last"), app.undo_last_case, "outline")
         self._action(card, app.t("dev.open_folder"), self._open_folder, "outline")
         self._action(card, app.t("dev.export_csv"), self._export_csv, "outline")
         self._action(card, app.t("dev.export_settings"), self._export_settings, "outline")
@@ -450,7 +505,9 @@ class DevView(tk.Frame):
             self._heading(parent, app.t("dev.stats"), app.t("footer.history_off"))
             return
 
-        for window_days, label_key in ((1, "dev.stats_today"), (7, "dev.stats_week"),
+        self._week_panel(parent)
+
+        for window_days, label_key in ((1, "dev.stats_today"),
                                        (None, "dev.stats_all")):
             stats = app.history.stats(window_days=window_days)
             self._heading(parent, app.t(label_key))
@@ -516,6 +573,132 @@ class DevView(tk.Frame):
         self._action(self._card(parent), app.t("dev.export_csv"), self._export_csv, "outline")
         tk.Frame(parent, bg=theme["bg"], height=12).pack(fill="x")
 
+    def _week_panel(self, parent) -> None:
+        """This week's AHT per case type, and what it takes to get on target.
+
+        For each type: how many cases, the running average against target, and
+        the recovery plan - how many more cases at what AHT to pull the weekly
+        average back. That last part is the number an agent can actually act
+        on mid-shift.
+        """
+        app = self.app
+        theme, fonts = app.theme, app.fonts
+        self._heading(parent, app.t("dev.week"))
+
+        plan = app.weekly_plan()
+        active = [c for c in app.config.get("case_types", []) if c.get("enabled", True)]
+        if not any(plan.get(c["id"], {}).get("count") for c in active):
+            card = self._card(parent)
+            tk.Label(card, text=app.t("dev.week_no_data"), bg=theme["surface"],
+                     fg=theme["text_faint"], font=fonts["small"], anchor="w").pack(
+                fill="x", padx=12, pady=10)
+            return
+
+        for case in active:
+            entry = plan.get(case["id"])
+            if not entry:
+                continue
+            card = self._card(parent, pady=5)
+
+            # Header: name, count, average vs target.
+            head = tk.Frame(card, bg=theme["surface"])
+            head.pack(fill="x", padx=12, pady=(10, 2))
+            dot = tk.Canvas(head, width=10, height=10, bg=theme["surface"],
+                            highlightthickness=0, bd=0)
+            dot.pack(side="left", padx=(0, 6))
+            dot.create_oval(1, 1, 9, 9, fill=case.get("color", theme["accent"]), outline="")
+            tk.Label(head, text=case["name"], bg=theme["surface"], fg=theme["text"],
+                     font=fonts["small_bold"], anchor="w").pack(side="left")
+            tk.Label(head, text=f"{entry['count']} {app.t('misc.cases')}",
+                     bg=theme["surface"], fg=theme["text_faint"],
+                     font=fonts["tiny"]).pack(side="right")
+
+            if not entry["count"]:
+                tk.Label(card, text=app.t("dev.week_no_data"), bg=theme["surface"],
+                         fg=theme["text_faint"], font=fonts["tiny"], anchor="w").pack(
+                    fill="x", padx=12, pady=(0, 10))
+                continue
+
+            # Average against target, with the surplus/deficit spelled out.
+            debt = entry["debt_s"]
+            if debt > 0:
+                state_text = f"{app.t('dev.over_by')} {format_duration(debt)}"
+                state_color = theme["danger"]
+            elif debt < 0:
+                state_text = f"{app.t('dev.under_by')} {format_duration(-debt)}"
+                state_color = theme["ok"]
+            else:
+                state_text = app.t("dev.on_track")
+                state_color = theme["ok"]
+
+            line = tk.Frame(card, bg=theme["surface"])
+            line.pack(fill="x", padx=12, pady=(0, 2))
+            tk.Label(line, text=format_duration(entry["avg_s"]), bg=theme["surface"],
+                     fg=state_color, font=fonts["h1"], anchor="w").pack(side="left")
+            tk.Label(line, text=f"  /  {format_duration(entry['target_s'])}",
+                     bg=theme["surface"], fg=theme["text_faint"],
+                     font=fonts["small"]).pack(side="left")
+            tk.Label(line, text=state_text, bg=theme["surface"], fg=state_color,
+                     font=fonts["tiny_bold"]).pack(side="right")
+
+            # A bar showing the average against the target.
+            meter = tk.Canvas(card, height=5, bg=theme["surface"],
+                              highlightthickness=0, bd=0)
+            meter.pack(fill="x", padx=12, pady=(2, 6))
+            ratio = (entry["avg_s"] / float(entry["target_s"])) if entry["target_s"] else 0
+            meter.bind("<Configure>", lambda e, m=meter, r=ratio, c=state_color:
+                       self._paint_target_meter(m, r, c))
+
+            # The recovery plan.
+            if debt > 0 and entry["target_s"]:
+                tk.Label(card, text=app.t("dev.week_plan"), bg=theme["surface"],
+                         fg=theme["text_faint"], font=fonts["tiny_bold"],
+                         anchor="w").pack(fill="x", padx=12, pady=(2, 2))
+                for projection in entry["projections"]:
+                    row = tk.Frame(card, bg=theme["surface"])
+                    row.pack(fill="x", padx=12, pady=1)
+                    tk.Label(row, text=app.t("dev.next_cases", n=projection["cases"]),
+                             bg=theme["surface"], fg=theme["text_dim"],
+                             font=fonts["tiny"], anchor="w").pack(side="left")
+                    if projection["feasible"]:
+                        text, color = format_duration(projection["required_s"]), theme["text"]
+                    else:
+                        text = app.t("dev.not_feasible", n=projection["cases"])
+                        color = theme["text_faint"]
+                    tk.Label(row, text=text, bg=theme["surface"], fg=color,
+                             font=fonts["tiny_bold"]).pack(side="right")
+                if entry["cases_at_floor"]:
+                    floor = int(round(entry["target_s"]
+                                      * float(app.config.get("adaptive_min_factor", 0.6))))
+                    need = entry["cases_at_floor"]
+                    key = "dev.need_cases_one" if need == 1 else "dev.need_cases"
+                    tk.Label(card, text=app.t(key, n=need, aht=format_duration(floor)),
+                             bg=theme["surface"], fg=theme["warn"], font=fonts["tiny"],
+                             anchor="w", justify="left", wraplength=270).pack(
+                        fill="x", padx=12, pady=(4, 0))
+
+            # What the timer will actually ask for next.
+            if app.config.get("adaptive_target", True):
+                tk.Label(card,
+                         text=(f"{app.t('user.adaptive')}: "
+                               f"{format_duration(entry['adaptive_target_s'])}"),
+                         bg=theme["surface"], fg=theme["accent"], font=fonts["tiny_bold"],
+                         anchor="w").pack(fill="x", padx=12, pady=(6, 0))
+            tk.Frame(card, bg=theme["surface"], height=8).pack(fill="x")
+
+    def _paint_target_meter(self, canvas: tk.Canvas, ratio: float, color: str) -> None:
+        """Bar of the weekly average against target; the target sits at 75%."""
+        canvas.delete("all")
+        width = canvas.winfo_width()
+        if width <= 1:
+            return
+        theme = self.app.theme
+        mark = width * 0.75
+        draw_round_rect(canvas, 0, 0, width, 5, 2.5, fill=theme["track"])
+        filled = max(2.0, min(float(width), mark * ratio))
+        draw_round_rect(canvas, 0, 0, filled, 5, 2.5, fill=color)
+        canvas.create_line(mark, -1, mark, 6, fill=theme["text_dim"], width=1)
+
     def _paint_meter(self, canvas: tk.Canvas, ratio: float) -> None:
         canvas.delete("all")
         width = canvas.winfo_width()
@@ -563,6 +746,13 @@ class DevView(tk.Frame):
     # ==================================================================
     # Actions
     # ==================================================================
+    def _toggle_week_start(self) -> None:
+        """Flip the week boundary between Sunday and Monday."""
+        current = self.app.config.get("week_starts_on", "sunday")
+        self.app.config.set("week_starts_on", "monday" if current == "sunday" else "sunday")
+        self.app.apply_adaptive_target()
+        self.refresh()
+
     def _pick_accent(self) -> None:
         color = dialogs.pick_color(self.app, self.app.theme["accent"])
         if color:
@@ -634,13 +824,23 @@ class DevView(tk.Frame):
         self.app.refresh_views()
         self.refresh()
 
+    def _toggle_applies(self, item: dict, case_id: str) -> None:
+        """Add or remove one case type from an item's applicability list."""
+        current = list(item.get("applies_to") or [])
+        if case_id in current:
+            current.remove(case_id)
+        else:
+            current.append(case_id)
+        self._commit_check(item, "applies_to", current)
+        self.refresh()
+
     def _add_check(self) -> None:
         label = dialogs.prompt(self.app, self.app.t("dev.add_check"), "", self.app.t("dev.name"))
         if not label:
             return
         items = [dict(i) for i in self.app.config.get("checklist", [])]
         items.append({"id": new_id("chk"), "label": label.strip()[:60], "hint": "",
-                      "enabled": True})
+                      "enabled": True, "applies_to": []})
         self.app.config.set("checklist", items)
         self.app.sync_checklist()
         self.refresh()

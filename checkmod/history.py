@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import time
 from typing import Any, Dict, Iterable, List, Optional
@@ -80,6 +81,20 @@ class History:
             return True
         except OSError:
             return False
+
+    def remove_last(self) -> Optional[Dict[str, Any]]:
+        """Delete and return the most recent record, or ``None`` if empty.
+
+        Backs the "undo last case" button: agents mis-click Complete, and a
+        wrong record quietly skews the weekly average it feeds.
+        """
+        records = self.load()
+        if not records:
+            return None
+        removed = records[-1]
+        if not self._rewrite(records[:-1]):
+            return None
+        return removed
 
     def wipe(self) -> bool:
         """Delete the history file entirely."""
@@ -173,6 +188,17 @@ class History:
             bucket["avg_s"] = int(round(bucket["total_s"] / float(bucket["count"])))
         return summary
 
+    def week_records(self, starts_on: str = "sunday"):
+        """Records logged since the start of the current week."""
+        return self.load(since_ts=week_start(starts_on=starts_on))
+
+    def weekly_plan(self, case_types, recovery_cases: int = 10,
+                    min_factor: float = 0.6, max_factor: float = 1.25,
+                    starts_on: str = "sunday"):
+        """:func:`weekly_plan` applied to this week's records."""
+        return weekly_plan(self.week_records(starts_on), case_types,
+                           recovery_cases, min_factor, max_factor)
+
     # ------------------------------------------------------------------
     # Export
     # ------------------------------------------------------------------
@@ -207,6 +233,92 @@ class History:
             return True
         except OSError:
             return False
+
+
+def week_start(now: Optional[float] = None, starts_on: str = "sunday") -> float:
+    """Epoch seconds of the current week's first midnight.
+
+    Trust & Safety weeks are quoted Sunday-to-Saturday, so that is the
+    default; ``starts_on="monday"`` is offered for teams that use ISO weeks.
+    """
+    stamp = time.localtime(now if now is not None else time.time())
+    # tm_wday: Monday=0 ... Sunday=6
+    if starts_on == "monday":
+        days_back = stamp.tm_wday
+    else:
+        days_back = (stamp.tm_wday + 1) % 7
+    midnight = time.mktime((stamp.tm_year, stamp.tm_mon, stamp.tm_mday, 0, 0, 0,
+                            stamp.tm_wday, stamp.tm_yday, stamp.tm_isdst))
+    return midnight - days_back * 86400
+
+
+def weekly_plan(records, case_types, recovery_cases: int = 10,
+                min_factor: float = 0.6, max_factor: float = 1.25):
+    """Per-case-type weekly AHT position, and what it takes to recover.
+
+    For each case type this returns the week's count and average, the running
+    surplus or deficit against the target, and the answer to the question an
+    agent actually asks: *how many more cases, and at what AHT, to bring the
+    weekly average back to target?*
+
+    The arithmetic, for ``n`` cases totalling ``total`` against target ``T``:
+
+        debt        = total - n * T          (>0 = over budget)
+        required(m) = T - debt / m           (AHT for the next m cases)
+        cases_at(d) = debt / (T - d)         (m needed at a fixed pace d)
+
+    ``required`` can come out implausibly low - or negative - when the debt is
+    large relative to ``m``; the caller is told so via ``feasible`` rather
+    than being handed a target nobody can hit.
+    """
+    plan = {}
+    for case in case_types:
+        case_id = case.get("id")
+        target = int(case.get("target_s", 0) or 0)
+        mine = [r for r in records if (r.get("case_id") or r.get("case_name")) == case_id]
+        count = len(mine)
+        total = sum(int(r.get("duration_s", 0) or 0) for r in mine)
+        average = int(round(total / count)) if count else 0
+        debt = total - count * target if target else 0
+
+        entry = {
+            "id": case_id,
+            "name": case.get("name", ""),
+            "color": case.get("color", ""),
+            "count": count,
+            "total_s": total,
+            "avg_s": average,
+            "target_s": target,
+            "debt_s": debt,
+            "on_track": debt <= 0,
+            "projections": [],
+            "cases_at_floor": None,
+            "adaptive_target_s": target,
+        }
+
+        if target > 0:
+            floor = max(1, int(round(target * min_factor)))
+            ceiling = int(round(target * max_factor))
+
+            for horizon in (5, 10, 20):
+                required = target - debt / float(horizon)
+                entry["projections"].append({
+                    "cases": horizon,
+                    "required_s": int(round(required)),
+                    "feasible": required >= floor,
+                })
+
+            if debt > 0:
+                # Cases needed if every one of them runs at the fastest pace
+                # we are willing to ask for.
+                gap = target - floor
+                entry["cases_at_floor"] = int(math.ceil(debt / gap)) if gap > 0 else None
+
+            adaptive = target - debt / float(max(1, recovery_cases))
+            entry["adaptive_target_s"] = int(round(max(floor, min(ceiling, adaptive))))
+
+        plan[case_id] = entry
+    return plan
 
 
 def _local_midnight() -> float:

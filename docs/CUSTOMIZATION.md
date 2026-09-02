@@ -118,6 +118,7 @@ clicking the `Target 15:00 ✎` pill under the timer.
 | **Label** | Up to 60 characters. What appears on the row. |
 | **Description** | Up to 240 characters. Shown as a tooltip when the moderator hovers the row in User Mode — the natural place for your team's exact policy wording. |
 | **Enable switch** | Off removes the item from User Mode but keeps it in history. |
+| **Applies to** | Chips for each case type. *All case types* is the default; selecting specific types makes the item appear only for those. Evidence Adherence ships set to Island only, because Voice and Text chats have no evidence to attach. |
 | **▲ / ▼ / ×** | Reorder and delete. Row order matches the `1…9` shortcuts. |
 
 Editing the checklist while a case is open never clears ticks that have
@@ -138,7 +139,32 @@ are ordinary items — rename them, reorder them, or replace them entirely.
 | **Count paused time** | Off | On includes paused time in the logged duration. |
 | **Amber warning at** | 80% | Where the ring turns amber, as a percentage of the target. |
 | **Alert when the AHT target is passed** | On | Red ring plus a slowly blinking status dot in the title bar. |
-| **Alert sound** | Off | One short beep the first time a case passes its target. Uses only what the OS already provides — no audio files, no libraries. |
+| **Warn before the target is reached** | On | A heads-up while there is still time to act. |
+| **Warn this many seconds early** | 10 s | 0 disables it. |
+| **Alert sound** | Off | One high tone for the heads-up, two lower tones when the target is passed, so they are distinguishable by ear. Uses only what the OS already provides — no audio files, no libraries. |
+
+### Adaptive AHT
+
+| Control | Default | Effect |
+|---|---|---|
+| **Adaptive target** | On | The timer target tracks this week's average for the case type instead of the static configured number. |
+| **Spread corrections over** | 10 cases | A larger number corrects more gently. |
+| **Never ask for less than** | 60% | Floor, as a fraction of the configured target. |
+| **Never hand back more than** | 125% | Ceiling, for when you are ahead of budget. |
+| **Week starts on** | Sunday | Sunday–Saturday, or Monday for ISO weeks. |
+
+The arithmetic, for `n` cases this week totalling `total` against target `T`:
+
+```
+debt          = total - n * T            (> 0 means over budget)
+adaptive      = clamp(T - debt / spread, T * min, T * max)
+required(m)   = T - debt / m             (AHT for the next m cases)
+cases_at(d)   = ceil(debt / (T - d))     (cases needed at a fixed pace d)
+```
+
+`required` and `cases_at` are what *Dev Mode → Stats* reports; `adaptive` is
+what the timer asks for. History records keep both the configured target and
+the adaptive one in force at the time, so past cases stay interpretable.
 
 ---
 
@@ -182,7 +208,7 @@ Full file, with the factory values:
 
 ```jsonc
 {
-  "schema": 1,                      // migration marker, do not edit
+  "schema": 2,                      // migration marker, do not edit
 
   "language": "en",
   "mode": "user",                   // "user" | "dev" - the mode on launch
@@ -217,6 +243,15 @@ Full file, with the factory values:
   "confirm_reset": true,
   "require_all_checks": false,
   "count_paused_time": false,
+  "prealert_enabled": true,
+  "prealert_seconds": 10,           // 0 = off
+
+  // ---- adaptive AHT ----
+  "adaptive_target": true,
+  "adaptive_recovery_cases": 10,    // spread corrections over this many cases
+  "adaptive_min_factor": 0.6,       // floor, as a fraction of the target
+  "adaptive_max_factor": 1.25,      // ceiling
+  "week_starts_on": "sunday",       // "sunday" | "monday"
 
   // ---- data ----
   "history_enabled": true,
@@ -230,10 +265,11 @@ Full file, with the factory values:
   ],
 
   "checklist": [
-    { "id": "escalation",  "label": "Escalation Adherence",  "hint": "...", "enabled": true },
-    { "id": "enforcement", "label": "Enforcement Adherence", "hint": "...", "enabled": true },
-    { "id": "evidence",    "label": "Evidence Adherence",    "hint": "...", "enabled": true },
-    { "id": "comment",     "label": "Comment Adherence",     "hint": "...", "enabled": true }
+    // "applies_to": [] means every case type.
+    { "id": "escalation",  "label": "Escalation Adherence",  "hint": "...", "enabled": true, "applies_to": [] },
+    { "id": "enforcement", "label": "Enforcement Adherence", "hint": "...", "enabled": true, "applies_to": [] },
+    { "id": "evidence",    "label": "Evidence Adherence",    "hint": "...", "enabled": true, "applies_to": ["island"] },
+    { "id": "comment",     "label": "Comment Adherence",     "hint": "...", "enabled": true, "applies_to": [] }
   ]
 }
 ```
