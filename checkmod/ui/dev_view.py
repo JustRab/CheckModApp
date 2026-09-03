@@ -26,7 +26,8 @@ import time
 import tkinter as tk
 from typing import Callable, Dict, Optional
 
-from .. import __author__, __version__, paths, shortcuts, theme as theme_mod
+from .. import (__author__, __version__, alerts, paths, shortcuts,
+                theme as theme_mod)
 from ..config import DEFAULT_TARGET_S, new_id
 from ..session import format_duration, parse_duration
 from . import dialogs
@@ -464,6 +465,18 @@ class DevView(tk.Frame):
                          lambda v: (app.t("misc.none") if v <= 0 else f"{int(v)} s"))
         self._switch_row(card, app.t("dev.alert_over"), "alert_on_over")
         self._switch_row(card, app.t("dev.sound"), "sound_enabled")
+        self._slider_row(card, app.t("dev.alert_repeats"), "alert_repeats", 1, 5, 1,
+                         lambda v: f"{int(v)}x")
+        # Hearing the alert should not require waiting out a whole case.
+        self._action(card, app.t("dev.test_prealert"),
+                     lambda: app.play_alert("prealert", force=True), "outline")
+        self._action(card, app.t("dev.test_over"),
+                     lambda: app.play_alert("over", force=True), "outline")
+        if not alerts.available():
+            tk.Label(card, text=app.t("dev.no_audio"), bg=theme["surface"],
+                     fg=theme["text_faint"], font=fonts["tiny"], anchor="w",
+                     justify="left", wraplength=290).pack(fill="x", padx=12,
+                                                          pady=(4, 10))
 
         self._heading(parent, app.t("dev.adaptive"),
                       "The timer target tracks this week's average for the case "

@@ -30,12 +30,12 @@ powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
 Or double-click **`packaging\build_windows.bat`**, which is the same thing
 wrapped for people who would rather not open a terminal.
 
-Two distributions are produced:
+Two layouts are produced locally:
 
-| Output | What it is | When to use it |
+| Output | What it is | Notes |
 |---|---|---|
-| `dist\CheckMod.exe` | One file, ~12 MB | Convenience. Copy it anywhere and double-click. |
-| `dist-folder\CheckMod\` | One folder: the exe beside its libraries | **Managed corporate machines.** Nothing is extracted to `%TEMP%` at launch, so heuristic antivirus has much less to object to, and start-up is instant. |
+| `dist-folder\CheckMod\` | One folder: the exe beside its libraries | **This is what releases ship.** Nothing is extracted to `%TEMP%` at launch, so heuristic antivirus has much less to object to, and start-up is instant. |
+| `dist\CheckMod.exe` | One file, ~12 MB | Convenience for local use. Deliberately **not** released: it is the same application, and two downloads only made people ask which to pick. |
 
 Both are portable and neither needs administrator rights.
 
@@ -80,7 +80,7 @@ privacy guarantee, not just a size optimisation — cannot drift between them.
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/tests.yml` | every push and pull request | Runs the full suite on Python 3.9, 3.11 and 3.12, under `xvfb` so the interface tests run too; byte-compiles every module; re-runs the icon generator |
-| `.github/workflows/build.yml` | tags matching `v*` or `[0-9]*`, or manually | Builds both distributions on a Windows runner, signs them if a certificate is configured, writes `SHA256SUMS.txt`, uploads everything as an artifact and attaches it to the GitHub release |
+| `.github/workflows/build.yml` | tags matching `v*` or `[0-9]*`, or manually | Builds the one-folder distribution on a Windows runner, signs it if a certificate is configured, writes `SHA256SUMS.txt`, uploads both as an artifact and attaches them to the GitHub release |
 
 ### Optional code signing
 
@@ -112,7 +112,7 @@ The executable appears on the Releases page a few minutes later.
 
 | Setting | Why |
 |---|---|
-| one-file **and** one-folder builds | The single file is the convenient default; the folder is what a locked-down machine should get, because it never extracts itself to `%TEMP%` |
+| one-folder build for releases | It never extracts itself to `%TEMP%`, which is what a locked-down machine needs; the one-file spec stays available for local builds |
 | `console=False` | No terminal window flashing behind the floating UI |
 | `upx=False` | UPX packing is the single biggest cause of antivirus false positives on PyInstaller output. A few megabytes are not worth the support tickets. |
 | `excludes=[...]` | Drops standard-library modules the app never imports — including `socket`, `ssl`, `http` and `urllib.request`. This halves the binary and makes "it cannot reach the network" a structural fact rather than a promise. |

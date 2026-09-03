@@ -15,7 +15,7 @@ Every structural decision follows from four requirements:
 1. **No installation, no administrator rights.** Rules out anything that
    touches the registry, `Program Files`, services or global hooks. Also
    rules out a runtime that must be installed first — hence a frozen
-   single-file binary.
+   frozen binary.
 2. **Privacy first.** Rules out network code, telemetry and any storage of
    identifying data. See [PRIVACY.md](PRIVACY.md).
 3. **Small download, auditable source.** Rules out Electron (~150 MB) and
@@ -207,7 +207,9 @@ made with confidence.
 
 ## Packaging
 
-`packaging/CheckMod.spec` freezes the app with PyInstaller into one file:
+`packaging/CheckModFolder.spec` freezes the app with PyInstaller into the
+folder distribution that releases ship (`packaging/CheckMod.spec` builds a
+single-file variant for local use). Both share `packaging/build_config.py`:
 
 - `console=False` — no terminal window behind the floating UI.
 - `upx=False` — UPX compression is the leading cause of antivirus false

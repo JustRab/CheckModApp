@@ -144,7 +144,8 @@ are ordinary items — rename them, reorder them, or replace them entirely.
 | **Alert when the AHT target is passed** | On | Red ring plus a slowly blinking status dot in the title bar. |
 | **Warn before the target is reached** | On | A heads-up while there is still time to act. |
 | **Warn this many seconds early** | 10 s | 0 disables it. |
-| **Alert sound** | Off | One high tone for the heads-up, two lower tones when the target is passed, so they are distinguishable by ear. Uses only what the OS already provides — no audio files, no libraries. |
+| **Alert sound** | On | A rising two-note chime for the heads-up and an urgent high/low warble once the target is passed, so they are distinguishable by ear. The tones are synthesised at runtime from the standard library — no audio files, no libraries — and Dev Mode has a button to play each on demand. |
+| **Repeat the over-target alert** | 2× | 1–5. How many times the urgent pattern plays. |
 
 ### Adaptive AHT
 
@@ -244,6 +245,7 @@ Full file, with the factory values:
   "warn_at_pct": 80,                // 10 .. 100
   "alert_on_over": true,
   "sound_enabled": true,
+  "alert_repeats": 2,               // 1..5, over-target alert only
   "confirm_reset": true,
   "require_all_checks": false,
   "count_paused_time": false,

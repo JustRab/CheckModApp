@@ -26,6 +26,7 @@ from typing import List, Optional, Tuple
 
 from . import APP_NAME, __version__, paths
 from .config import Config
+from . import alerts
 from .history import History
 from .i18n import Translator
 from .session import Session, format_duration
@@ -608,8 +609,16 @@ class App:
         self.apply_adaptive_target()
         self.refresh_views()
 
-    def on_check_toggled(self, _check_id: str, _value: bool) -> None:
-        """Callback from a checklist row; refreshes derived UI state."""
+    def on_check_toggled(self, check_id: str, value: bool) -> None:
+        """Record a checklist row's new state, then refresh derived UI.
+
+        The row owns its own visuals but the session is the source of truth
+        for everything downstream - the Complete button's gate, the pending
+        count, and the record written to history. This used to ignore both
+        arguments, so a box ticked by clicking looked ticked and was still
+        logged as false.
+        """
+        self.session.checks[check_id] = bool(value)
         if isinstance(self.view, UserView):
             self.view._sync_controls()      # noqa: SLF001 - same package, intentional
             self.view._sync_mini_checks()   # noqa: SLF001
@@ -713,8 +722,7 @@ class App:
         session.prealert_fired = True
         if remaining <= 0:
             return          # already past the target; the over-alert covers it
-        if self.config.get("sound_enabled", False):
-            self._beep(pattern=(1180, 90))
+        self.play_alert("prealert")
         self._flash_prealert()
 
     def _flash_prealert(self, times: int = 4) -> None:
@@ -735,26 +743,19 @@ class App:
             return
         self._over_alerted = True
         self.session.over_alert_fired = True
-        if self.config.get("sound_enabled", False):
-            # Two low tones, clearly different from the single high pre-alert.
-            self._beep(pattern=(660, 160))
-            self.root.after(200, lambda: self._beep(pattern=(660, 160)))
+        self.play_alert("over")
 
-    def _beep(self, pattern=(880, 140)) -> None:
-        """Play a short alert using only what the platform already provides.
+    def play_alert(self, kind: str, force: bool = False) -> bool:
+        """Play one of the generated alert patterns.
 
-        ``pattern`` is ``(frequency_hz, duration_ms)``. Elsewhere Tk's bell is
-        the only thing guaranteed to exist, so the pitch is ignored there.
+        ``force`` bypasses the sound setting, for the test buttons in Dev
+        Mode. Returns whether audio was produced, so callers can tell the
+        difference between "muted" and "this platform has no audio".
         """
-        try:
-            if sys.platform.startswith("win"):
-                import winsound
-
-                winsound.Beep(int(pattern[0]), int(pattern[1]))
-            else:
-                self.root.bell()
-        except Exception:
-            pass
+        if not force and not self.config.get("sound_enabled", True):
+            return False
+        repeats = int(self.config.get("alert_repeats", 2)) if kind == "over" else 1
+        return alerts.play(kind, root=self.root, repeats=repeats)
 
     # ------------------------------------------------------------------
     # Help

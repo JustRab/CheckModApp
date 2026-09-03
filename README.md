@@ -77,12 +77,13 @@ are ever requested**, so it never needs an IT ticket.
 
 From the [Releases](../../releases) page:
 
-| Download | Use it when |
+| Download | What it is |
 |---|---|
-| **`CheckMod-folder.zip`** | **Recommended on a managed work machine.** Unzip anywhere, run the `CheckMod.exe` inside. Extracts nothing at runtime, so it gives heuristic antivirus far less to object to, and starts instantly. |
-| `CheckMod.exe` | You want a single file and your machine is not locked down. |
-| **`CheckMod-<version>-share.zip`** | You need to hand the app to a colleague. Both layouts plus a plain-language README and the IT one-pager, in one file — no repository access needed. See [DISTRIBUTION.md](docs/DISTRIBUTION.md). |
-| `SHA256SUMS.txt` | Your IT team wants to allow-list the exact build. |
+| **`CheckMod-folder.zip`** | The app. Unzip anywhere and run the `CheckMod.exe` inside. Extracts nothing at runtime, so heuristic antivirus has far less to object to, and it starts instantly. |
+| `SHA256SUMS.txt` | Hashes, if your IT team wants to allow-list the exact build. |
+
+To hand it to a colleague, send them that zip — no repository access needed.
+See [DISTRIBUTION.md](docs/DISTRIBUTION.md).
 
 Or build it yourself in one command — see [Building the executable](#building-the-executable).
 
@@ -95,10 +96,6 @@ an administrator.
 ### 3. Double-click it
 
 The tutorial opens on the first run. That's the whole setup.
-
-> **First launch of the single-file build takes a second or two** while it
-> unpacks itself into your temporary folder. The folder distribution starts
-> immediately.
 
 > **Windows may show a SmartScreen prompt** for any new unsigned executable —
 > it is a reputation check, not a malware verdict. Click *More info → Run

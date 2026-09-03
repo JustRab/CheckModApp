@@ -66,22 +66,52 @@ class Session:
         can be advanced deterministically.
     """
 
-    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(self, clock: Callable[[], float] = time.monotonic,
+                 wall_clock: Callable[[], float] = time.time) -> None:
         self._clock = clock
+        self._wall = wall_clock
         self.case_id: Optional[str] = None
         self.case_name: str = ""
         self.target_s: int = 0        # effective target (may be adaptive)
         self.base_target_s: int = 0   # the case type's configured target
         self.state: str = IDLE
         self._started_at: Optional[float] = None   # monotonic mark of the run
+        self._started_wall_at: Optional[float] = None   # wall-clock mark
         self._accumulated: float = 0.0             # completed run segments
         self._paused_total: float = 0.0            # time spent paused
         self._paused_at: Optional[float] = None
+        self._paused_wall_at: Optional[float] = None
         self.checks: Dict[str, bool] = {}
         self.started_wall: Optional[float] = None  # epoch, for the history log
         # Latches so each alert fires once per case rather than every tick.
         self.prealert_fired = False
         self.over_alert_fired = False
+
+    # ------------------------------------------------------------------
+    # Elapsed-time measurement
+    # ------------------------------------------------------------------
+    def _segment(self, mono_start: Optional[float],
+                 wall_start: Optional[float]) -> float:
+        """Length of an open time segment, counting time the machine slept.
+
+        ``time.monotonic()`` is the right clock for a stopwatch - immune to
+        clock corrections and daylight-saving - but on Windows it does **not**
+        advance while the machine is suspended. A moderator who locks their
+        PC and walks away would come back to a timer that had skipped the
+        break, under-reporting the handle time.
+
+        Wall-clock time does cover suspension, so the segment is the longer of
+        the two deltas: monotonic governs normally, and the wall clock only
+        wins when real time genuinely passed that the monotonic clock missed.
+        Taking the maximum also means a clock correction that moves time
+        *backwards* cannot shorten a segment.
+        """
+        if mono_start is None:
+            return 0.0
+        elapsed = self._clock() - mono_start
+        if wall_start is not None:
+            elapsed = max(elapsed, self._wall() - wall_start)
+        return max(0.0, elapsed)
 
     # ------------------------------------------------------------------
     # Configuration
@@ -115,24 +145,25 @@ class Session:
         """Start (or resume) the stopwatch."""
         if self.state == RUNNING:
             return
-        now = self._clock()
         if self.state == PAUSED and self._paused_at is not None:
-            self._paused_total += now - self._paused_at
+            self._paused_total += self._segment(self._paused_at, self._paused_wall_at)
         self._paused_at = None
-        self._started_at = now
+        self._paused_wall_at = None
+        self._started_at = self._clock()
+        self._started_wall_at = self._wall()
         if self.started_wall is None:
-            self.started_wall = time.time()
+            self.started_wall = self._wall()
         self.state = RUNNING
 
     def pause(self) -> None:
         """Freeze the stopwatch, keeping the time accumulated so far."""
         if self.state != RUNNING:
             return
-        now = self._clock()
-        if self._started_at is not None:
-            self._accumulated += now - self._started_at
+        self._accumulated += self._segment(self._started_at, self._started_wall_at)
         self._started_at = None
-        self._paused_at = now
+        self._started_wall_at = None
+        self._paused_at = self._clock()
+        self._paused_wall_at = self._wall()
         self.state = PAUSED
 
     def toggle(self) -> None:
@@ -143,9 +174,11 @@ class Session:
         """Return to a pristine state, optionally keeping the case type."""
         self.state = IDLE
         self._started_at = None
+        self._started_wall_at = None
         self._accumulated = 0.0
         self._paused_total = 0.0
         self._paused_at = None
+        self._paused_wall_at = None
         self.started_wall = None
         self.prealert_fired = False
         self.over_alert_fired = False
@@ -163,16 +196,16 @@ class Session:
     def elapsed(self) -> float:
         """Seconds of *active* handling time (paused time excluded)."""
         total = self._accumulated
-        if self.state == RUNNING and self._started_at is not None:
-            total += self._clock() - self._started_at
+        if self.state == RUNNING:
+            total += self._segment(self._started_at, self._started_wall_at)
         return total
 
     @property
     def paused_seconds(self) -> float:
         """Seconds spent paused so far."""
         total = self._paused_total
-        if self.state == PAUSED and self._paused_at is not None:
-            total += self._clock() - self._paused_at
+        if self.state == PAUSED:
+            total += self._segment(self._paused_at, self._paused_wall_at)
         return total
 
     def billable(self, count_paused: bool = False) -> float:
@@ -272,8 +305,10 @@ class Session:
         self.target_s = int(record.get("effective_target_s", self.base_target_s) or 0)
         self._accumulated = float(record.get("duration_s", 0) or 0)
         self._started_at = None
+        self._started_wall_at = None
         self._paused_total = float(record.get("paused_s", 0) or 0)
         self._paused_at = None
+        self._paused_wall_at = None
         self.state = PAUSED if self._accumulated else IDLE
         self.checks = {str(k): bool(v) for k, v in (record.get("checks") or {}).items()}
         self.prealert_fired = True      # already past this case's alerts

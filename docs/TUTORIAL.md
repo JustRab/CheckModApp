@@ -66,6 +66,9 @@ Controls:
 
 - **Start / Pause** — `Space`. Paused time is excluded from the AHT by
   default; *Dev Mode → Rules → Count paused time* changes that.
+- **Locking your PC does not stop the clock.** A running case keeps counting
+  through a lock, a screen blank or a full suspend, so stepping away without
+  pausing shows up in the AHT rather than quietly vanishing from it.
 - **Reset** — `Ctrl+R`. Clears the clock and the checklist for this case.
   Asks for confirmation if anything would be lost.
 
@@ -141,9 +144,12 @@ difference — `Target 14:30 (-00:30)` — in the accent colour, and hovering it
 names the base target. Turn the whole thing off in *Dev Mode → Rules →
 Adaptive target* to always use the configured number.
 
-A **heads-up alert** also fires 10 seconds before the target (configurable):
-one high tone if sound is on, plus a blink of the status dot. Passing the
-target gives two lower tones, so you can tell them apart without looking.
+A **heads-up alert** fires 10 seconds before the target (configurable): a
+rising two-note chime plus a blink of the status dot. Passing the target gives
+an urgent high/low warble, repeated — clearly different, so you can tell them
+apart without looking away from the case. *Dev Mode → Rules* has a button to
+play each one on demand, and controls how many times the over-target alert
+repeats.
 
 ## 6. Completing the case
 

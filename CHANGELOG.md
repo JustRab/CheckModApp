@@ -4,6 +4,43 @@ All notable changes to CheckMod are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] — 2026-09-03
+
+### Fixed
+
+- **Checklist items ticked by clicking were never recorded.** The row updated
+  its own appearance and nothing else: `on_check_toggled` ignored both of its
+  arguments and never wrote to the session. Three consequences, only the first
+  of which was visible — *Require a full checklist to complete* could only be
+  satisfied with the **Check all** button, the pending count ignored clicked
+  rows, and **every check ticked by clicking was written to history as
+  `false`**. History recorded before this release therefore under-reports
+  adherence; the "clean checklist %" and "most missed items" figures are not
+  trustworthy for those cases.
+- **The timer skipped time the machine spent asleep.** `time.monotonic()` is
+  the right clock for a stopwatch, but on Windows it does not advance while
+  the machine is suspended — so locking the PC and walking away lost the
+  break from the handle time. Each running and paused segment is now measured
+  as the longer of the monotonic and wall-clock deltas: monotonic governs
+  normally, the wall clock only wins when real time genuinely passed that the
+  monotonic clock missed, and taking the maximum means a backwards clock
+  correction can never shorten a case.
+
+### Changed
+
+- **The alert is a real sound, not a beep.** `winsound.Beep` plays one flat
+  square-wave tone, easy to miss under a headset. Alerts are now short WAVs
+  synthesised at runtime from the standard library and played through the
+  normal audio device: a rising two-note chime for the heads-up, and an urgent
+  high/low warble for a passed target, so the two are distinguishable without
+  looking. The over-target alert repeats a configurable number of times, and
+  Dev Mode → Rules has a button to play each on demand.
+- **Releases ship `CheckMod-folder.zip` only.** The single-file executable and
+  the share bundle are no longer published: all three were the same
+  application, and offering three downloads only raised the question of which
+  to pick. `packaging/CheckMod.spec` still builds a single-file variant
+  locally. Dropping the extra build also shortens the release job.
+
 ## [1.2.0] — 2026-09-02
 
 ### Added

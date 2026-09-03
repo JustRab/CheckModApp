@@ -47,9 +47,11 @@ when the file is signed with a certificate from a trusted CA, or once the
 build accumulates download reputation.
 
 **2. Heuristic antivirus flags.**
-The one-file build unpacks itself into `%TEMP%` at launch and executes from
-there. That behaviour resembles a dropper, so some engines flag it
-generically (`Wacatac`, `Occamy`, `Generic.Trojan` and similar names).
+Frozen Python binaries are sometimes flagged generically (`Wacatac`, `Occamy`,
+`Generic.Trojan` and similar names). The most common trigger — a one-file
+build unpacking itself into `%TEMP%` and executing from there, which resembles
+a dropper — does not apply here: the released distribution is a plain folder
+that extracts nothing at runtime.
 
 The build deliberately avoids the things that make this worse: it does **not**
 use UPX compression, does **not** bundle an updater, and ships full Windows
@@ -67,7 +69,7 @@ page is a plain folder holding `CheckMod.exe` next to its libraries. It
 heuristics react to. It also starts instantly. Unzip anywhere and run the exe
 inside — still portable, still no admin rights.
 
-*This is the recommended distribution for a managed machine.*
+*This is the only distribution released, for exactly this reason.*
 
 ### 2. Allow-list by hash
 

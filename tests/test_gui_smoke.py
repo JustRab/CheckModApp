@@ -449,3 +449,61 @@ def test_taskbar_presence_is_harmless_off_windows(app):
 
 def test_the_alert_sound_is_on_by_default(app):
     assert app.config.get("sound_enabled") is True
+
+
+# ----------------------------------------------------------------------
+# Clicking checklist rows must reach the session
+# ----------------------------------------------------------------------
+def test_clicking_a_row_records_the_tick_in_the_session(app):
+    """The row used to update only its own visuals; the tick was never stored."""
+    app.select_case("voice")
+    app.root.update()
+    row = app.view.checklist.rows["escalation"]
+
+    row._on_click()
+    app.root.update()
+    assert row.checked is True
+    assert app.session.checks["escalation"] is True
+
+    row._on_click()
+    app.root.update()
+    assert app.session.checks["escalation"] is False
+
+
+def test_ticking_rows_one_by_one_satisfies_require_all_checks(app):
+    """Complete stayed disabled unless "Check all" was used."""
+    app.config.set("require_all_checks", True)
+    app.select_case("voice")
+    app.view.sync()
+    app.root.update()
+    assert app.view.btn_complete.enabled is False
+
+    for row in list(app.view.checklist.rows.values()):
+        row._on_click()
+    app.root.update()
+
+    assert app.session.all_clear is True
+    assert app.view.btn_complete.enabled is True
+
+
+def test_checks_clicked_in_the_ui_reach_the_history_record(app):
+    """Clicked ticks were being logged as false, corrupting the statistics."""
+    app.select_case("voice")
+    app.root.update()
+    app.view.checklist.rows["escalation"]._on_click()
+    app.view.checklist.rows["comment"]._on_click()
+    app.root.update()
+
+    app.complete_case()
+    app.root.update()
+    checks = app.history.load()[0]["checks"]
+    assert checks == {"escalation": True, "enforcement": False, "comment": True}
+
+
+def test_the_pending_count_follows_clicked_rows(app):
+    app.select_case("voice")
+    app.root.update()
+    assert app.session.pending_count == 3
+    app.view.checklist.rows["enforcement"]._on_click()
+    app.root.update()
+    assert app.session.pending_count == 2

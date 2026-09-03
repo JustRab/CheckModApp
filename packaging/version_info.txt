@@ -6,8 +6,8 @@
 # every field is filled in with something meaningful.
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 2, 0, 0),
-    prodvers=(1, 2, 0, 0),
+    filevers=(1, 3, 0, 0),
+    prodvers=(1, 3, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -23,11 +23,11 @@ VSVersionInfo(
           [StringStruct(u'CompanyName', u'Iv\u00e1n Licea (@JustRab)'),
            StringStruct(u'LegalCopyright', u'Copyright (c) 2026 Iv\u00e1n Licea (@JustRab). MIT licence.'),
            StringStruct(u'FileDescription', u'CheckMod - moderation checklist & AHT companion'),
-           StringStruct(u'FileVersion', u'1.2.0.0'),
+           StringStruct(u'FileVersion', u'1.3.0.0'),
            StringStruct(u'InternalName', u'CheckMod'),
            StringStruct(u'OriginalFilename', u'CheckMod.exe'),
            StringStruct(u'ProductName', u'CheckMod'),
-           StringStruct(u'ProductVersion', u'1.2.0.0'),
+           StringStruct(u'ProductVersion', u'1.3.0.0'),
            StringStruct(u'Comments', u'Portable, offline. No installation and no administrator rights required.')])
       ]),
     VarFileInfo([VarStruct(u'Translation', [1033, 1200])])

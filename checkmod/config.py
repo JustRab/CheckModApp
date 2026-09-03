@@ -79,6 +79,7 @@ DEFAULTS: Dict[str, Any] = {
     "alert_on_over": True,          # red state + optional beep past target
     # On by default: an AHT alert nobody switched on is an alert nobody hears.
     "sound_enabled": True,
+    "alert_repeats": 2,             # how many times the over-target alert plays
     "confirm_reset": True,
     "require_all_checks": False,    # block "Complete" until every box is ticked
     "count_paused_time": False,
@@ -129,6 +130,7 @@ LIMITS = {
     "snap_threshold": (0, 60),
     "history_retention_days": (0, 3650),
     "prealert_seconds": (0, 120),
+    "alert_repeats": (1, 5),
     "adaptive_recovery_cases": (1, 200),
     "adaptive_min_factor": (0.2, 1.0),
     "adaptive_max_factor": (1.0, 3.0),
