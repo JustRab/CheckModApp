@@ -1,11 +1,17 @@
 name: Build Windows executable
 
-# Produces the two distributions users download. PyInstaller cannot
-# cross-compile, so this must run on a Windows runner.
+# Produces the release download. PyInstaller cannot cross-compile, so this
+# must run on a Windows runner.
 #
-#   CheckMod.exe          one file, convenient, self-extracts to %TEMP%
-#   CheckMod-folder.zip   one folder, corporate-friendly, no self-extraction
+#   CheckMod-folder.zip   the distribution: a folder holding CheckMod.exe and
+#                         its libraries. Nothing is extracted to %TEMP% at
+#                         launch, which is the behaviour heuristic antivirus
+#                         objects to, and it starts instantly.
 #   SHA256SUMS.txt        so IT can allow-list by hash instead of by exception
+#
+# The one-file build (packaging/CheckMod.spec) is deliberately NOT released:
+# it is the same application, and shipping two downloads only made people ask
+# which one to use. It remains available for local builds.
 on:
   push:
     # Match both tagging conventions: "v1.0.0" and a bare "1.0.0".
@@ -46,9 +52,6 @@ jobs:
           python -m pip install pytest
           python -m pytest tests/ -q --ignore=tests/test_gui_smoke.py
 
-      - name: Build the one-file executable
-        run: python -m PyInstaller packaging/CheckMod.spec --noconfirm --clean
-
       - name: Build the one-folder distribution
         run: >
           python -m PyInstaller packaging/CheckModFolder.spec
@@ -69,34 +72,16 @@ jobs:
           $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" `
             -Recurse -Filter signtool.exe |
             Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1
-          foreach ($target in @("dist\CheckMod.exe", "dist-folder\CheckMod\CheckMod.exe")) {
-            & $signtool.FullName sign /f $pfx /p $env:PFX_PASSWORD `
-              /tr http://timestamp.digicert.com /td sha256 /fd sha256 $target
-          }
+          & $signtool.FullName sign /f $pfx /p $env:PFX_PASSWORD `
+            /tr http://timestamp.digicert.com /td sha256 /fd sha256 `
+            dist-folder\CheckMod\CheckMod.exe
           Remove-Item $pfx -Force
 
       - name: Package the one-folder distribution
         shell: pwsh
-        run: Compress-Archive -Path dist-folder\CheckMod -DestinationPath dist\CheckMod-folder.zip
-
-      # One file a colleague can be handed directly - no repository access
-      # needed, which is the point when the repo stays private. The README
-      # text lives in packaging/share-readme.txt so it can be reviewed and
-      # edited as prose rather than as embedded YAML.
-      - name: Assemble the share bundle
-        shell: pwsh
         run: |
-          $version = (Select-String -Path checkmod/__init__.py `
-                      -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
-          $stage = "dist/bundle/CheckMod-$version"
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item -Recurse dist-folder/CheckMod "$stage/CheckMod"
-          Copy-Item dist/CheckMod.exe "$stage/CheckMod-single-file.exe"
-          Copy-Item docs/IT-APPROVAL.md "$stage/IT-APPROVAL.md"
-          (Get-Content packaging/share-readme.txt -Raw).Replace('{VERSION}', $version) |
-            Set-Content -Encoding UTF8 "$stage/README.txt"
-          Compress-Archive -Path $stage -DestinationPath "dist/CheckMod-$version-share.zip"
-          Remove-Item -Recurse -Force dist/bundle
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path dist-folder\CheckMod -DestinationPath dist\CheckMod-folder.zip
 
       - name: Publish checksums
         shell: pwsh
@@ -118,9 +103,7 @@ jobs:
         with:
           name: CheckMod-windows-portable
           path: |
-            dist/CheckMod.exe
             dist/CheckMod-folder.zip
-            dist/CheckMod-*-share.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
 
@@ -133,21 +116,15 @@ jobs:
           # An array, not a space-separated string: the latter relies on word
           # splitting, which shellcheck flags (SC2086) and which breaks the
           # moment a path contains a space.
-          files=(dist/CheckMod.exe dist/CheckMod-folder.zip dist/SHA256SUMS.txt)
-          shopt -s nullglob
-          files+=(dist/CheckMod-*-share.zip)
+          files=(dist/CheckMod-folder.zip dist/SHA256SUMS.txt)
           gh release create "${GITHUB_REF_NAME}" \
             --title "CheckMod ${GITHUB_REF_NAME}" \
             --notes "Portable build - no installation and no administrator rights required.
 
-          * **CheckMod.exe** - one file. Copy it anywhere and double-click.
-          * **CheckMod-folder.zip** - one folder. Preferred on managed corporate
-            machines: it does not extract itself to %TEMP% at launch, which is the
-            behaviour heuristic antivirus most often flags. Unzip and run the exe inside.
-          * **CheckMod-<version>-share.zip** - the whole thing in one file to hand
-            to a colleague: both layouts, a plain-language README and the IT summary.
-            Nobody needs repository access to use it.
-          * **SHA256SUMS.txt** - hashes, so IT can allow-list the exact build.
+          * **CheckMod-folder.zip** - unzip anywhere and run the CheckMod.exe inside.
+            Nothing is extracted to %TEMP% at launch, so heuristic antivirus has far
+            less to object to, and it starts instantly.
+          * **SHA256SUMS.txt** - hashes, so IT can allow-list this exact build.
 
           See docs/IT-APPROVAL.md for the summary an IT or security reviewer needs." \
             "${files[@]}" \

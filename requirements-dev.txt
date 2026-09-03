@@ -3,5 +3,5 @@
 # Python standard library (Tkinter). Nothing below ships inside the binary
 # except PyInstaller's bootloader.
 
-pyinstaller>=6.3        # builds the portable single-file executable
+pyinstaller>=6.3        # builds the portable executable
 pytest>=7.4             # unit tests for the headless logic

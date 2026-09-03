@@ -8,6 +8,7 @@ assertions are exact, not approximate, and the suite runs instantly.
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -276,3 +277,63 @@ def test_snapshot_marks_a_case_that_ran_over_target():
     session.start()
     clock.advance(45)
     assert session.snapshot()["within_target"] is False
+
+
+# ----------------------------------------------------------------------
+# Suspended machines
+# ----------------------------------------------------------------------
+def test_the_default_clock_counts_time_spent_suspended():
+    """Locking and suspending a PC must not silently shorten a case.
+
+    On Linux CLOCK_MONOTONIC stops while suspended and CLOCK_BOOTTIME does
+    not, so BOOTTIME is what the session must pick. On Windows there is no
+    CLOCK_BOOTTIME and none is needed: time.monotonic() is GetTickCount64(),
+    whose biased interrupt time already includes sleep and hibernation.
+    """
+    from checkmod.session import suspend_aware_clock
+
+    clock = suspend_aware_clock()
+    if hasattr(time, "CLOCK_BOOTTIME"):
+        assert abs(clock() - time.clock_gettime(time.CLOCK_BOOTTIME)) < 0.5
+    else:
+        assert clock is time.monotonic
+
+
+def test_the_default_clock_is_monotonic():
+    """No wall-clock component: a clock correction cannot move a case."""
+    from checkmod.session import suspend_aware_clock
+
+    clock = suspend_aware_clock()
+    readings = [clock() for _ in range(50)]
+    assert readings == sorted(readings)
+
+
+def test_a_session_built_without_a_clock_uses_the_suspend_aware_one():
+    session = Session()
+    session.start()
+    assert session.elapsed >= 0
+    assert session.state == RUNNING
+
+
+def test_elapsed_tracks_the_clock_across_a_suspend_sized_jump():
+    """A single injected clock stands in for a machine that slept."""
+    session, clock = make_session(target=300)
+    session.start()
+    clock.advance(60)
+    assert session.elapsed == 60
+
+    clock.advance(600)          # the gap a suspend would produce
+    assert session.elapsed == 660
+
+    session.pause()
+    clock.advance(30)           # paused: not handle time
+    assert session.elapsed == 660
+    assert session.paused_seconds == 30
+
+
+def test_elapsed_never_goes_negative():
+    """Guards a mark taken from a different clock, not normal operation."""
+    session, clock = make_session()
+    session.start()
+    clock.now -= 50
+    assert session.elapsed >= 0

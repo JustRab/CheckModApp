@@ -90,8 +90,8 @@ class TitleBar(tk.Frame):
             self, theme, app.fonts, text="DEV", command=app.toggle_mode,
             variant="outline", height=chip_h, radius=6, bg_token="bg_alt",
             font_key="tiny_bold", width=app.fonts.measure("USER", "tiny_bold") + 22,
-            tooltip=app.t("mode.to_dev"),
         )
+        self.btn_mode.tip = Tooltip(self.btn_mode, app.t("mode.to_dev"))
         self.btn_mode.pack(side="right", padx=(4, 6),
                            pady=max(2, (self.height - chip_h) // 2))
         self.btn_help = self._icon_button("?", app.show_tutorial, "tb.help")
@@ -107,8 +107,12 @@ class TitleBar(tk.Frame):
         button = Button(
             self, self.app.theme, self.app.fonts, text=glyph, command=command,
             variant="icon", height=size, radius=6, bg_token="bg_alt",
-            font_key="glyph", width=size + 2, tooltip=self.app.t(tooltip_key),
+            font_key="glyph", width=size + 2,
         )
+        # Keep the Tooltip so refresh() can retitle it. Constructing a new one
+        # each refresh would add another <Enter>/<Leave> binding every time -
+        # they accumulate, and every stale one still fires.
+        button.tip = Tooltip(button, self.app.t(tooltip_key))
         button.pack(side="right", padx=1, pady=max(2, (self.height - size) // 2))
         return button
 
@@ -177,12 +181,12 @@ class TitleBar(tk.Frame):
         app = self.app
         is_dev = app.config.get("mode") == "dev"
         self.btn_mode.set_text("USER" if is_dev else "DEV")
-        Tooltip(self.btn_mode, app.t("mode.to_user" if is_dev else "mode.to_dev"))
+        self.btn_mode.tip.set_text(app.t("mode.to_user" if is_dev else "mode.to_dev"))
 
         on_top = bool(app.config.get("always_on_top"))
         self.btn_pin.set_text("●" if on_top else "○")
         self.btn_pin.accent_override = app.theme["accent"] if on_top else None
-        Tooltip(self.btn_pin, app.t("tb.pin_on" if on_top else "tb.pin_off"))
+        self.btn_pin.tip.set_text(app.t("tb.pin_on" if on_top else "tb.pin_off"))
 
         self.btn_compact.set_text("▫" if app.config.get("compact") else "—")
         self._paint_handle()

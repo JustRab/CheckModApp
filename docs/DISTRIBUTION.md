@@ -3,8 +3,8 @@
 A private repository is the right default for anything built inside a Trust &
 Safety org. This document covers how to get the app to colleagues anyway.
 
-**The short answer:** hand them `CheckMod-<version>-share.zip`. It contains
-everything they need and nothing they need repository access for.
+**The short answer:** hand them `CheckMod-folder.zip` from the release. It is
+the whole app, and nobody needs repository access to use it.
 
 ---
 
@@ -18,35 +18,33 @@ artifact does.
 
 ---
 
-## Recommended: the share bundle
+## Recommended: send the release zip
 
-Every release build produces **`CheckMod-<version>-share.zip`**, assembled for
-exactly this purpose:
+Every release publishes **`CheckMod-folder.zip`**. Inside:
 
 ```
-CheckMod-1.1.0/
-├── CheckMod/                    the folder build - open it, run CheckMod.exe
-│   ├── CheckMod.exe
-│   └── _internal/
-├── CheckMod-single-file.exe     the same app as one file
-├── README.txt                   plain-language instructions for the user
-└── IT-APPROVAL.md               the one-pager for whoever approves software
+CheckMod/
+├── CheckMod.exe      double-click this
+└── _internal/        its libraries
 ```
 
-Download it once from the Actions run or the release page, then distribute the
-zip by whatever channel your organisation already trusts:
+Download it once from the release page, then distribute it by whatever channel
+your organisation already trusts:
 
 | Channel | Notes |
 |---|---|
 | **OneDrive / SharePoint / Teams** | Usually the best fit: already sanctioned, already access-controlled, and keeps an audit trail. |
-| **Network share** | Drop the folder on a team share; people copy it locally and run it. |
-| **Email** | Works, but many gateways strip or quarantine `.exe` and `.zip` files containing one. Prefer a link. |
+| **Network share** | Drop the unzipped folder on a team share; people copy it locally and run it. |
+| **Email** | Works, but many gateways strip or quarantine archives containing an `.exe`. Prefer a link. |
 | **USB stick** | Fine — turn on portable mode so settings travel with it (*Dev Mode → Data → Portable mode*). |
 
 Ask recipients to unzip it and run `CheckMod\CheckMod.exe`. Nothing is
-installed and no administrator rights are required.
+installed and no administrator rights are required; a short tutorial opens on
+first run.
 
----
+Worth sending alongside it, once: **[IT-APPROVAL.md](IT-APPROVAL.md)** — one
+page for whoever approves software, covering what the app touches, why Windows
+may warn about an unsigned binary, and how to verify every claim.
 
 ## Verifying what you sent
 
@@ -54,7 +52,7 @@ Each build also publishes `SHA256SUMS.txt`. Recipients — or IT — can confirm
 the file matches what CI produced:
 
 ```powershell
-Get-FileHash .\CheckMod-1.1.0-share.zip -Algorithm SHA256
+Get-FileHash .\CheckMod-folder.zip -Algorithm SHA256
 ```
 
 This matters more when the file travels by email or USB than when it comes
@@ -95,8 +93,8 @@ internal queue names in the case types, or an exported `history.jsonl`. Note
 that `.gitignore` already excludes `settings.json`, `history.jsonl` and the
 `CheckModData/` folder, so local data cannot be committed by accident.
 
-Keeping it private is still the safer default; the share bundle exists so
-that costs you nothing.
+Keeping it private is still the safer default; the release zip exists so that
+costs you nothing.
 
 ---
 

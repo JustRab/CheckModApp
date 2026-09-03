@@ -111,6 +111,12 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "dev.warn_pct": "Amber warning at",
         "dev.alert_over": "Alert when the AHT target is passed",
         "dev.sound": "Alert sound",
+        "dev.alert_repeats": "Repeat the over-target alert",
+        "dev.test_prealert": "Test the heads-up sound",
+        "dev.test_over": "Test the over-target alarm",
+        "dev.no_audio": ("This platform has no dependency-free audio, so the "
+                         "terminal bell is used instead. On Windows the full "
+                         "alert tones play."),
         "dev.confirm_reset": "Confirm before resetting",
         "dev.require_all": "Require a full checklist to complete",
         "dev.count_paused": "Count paused time",

@@ -16,7 +16,8 @@ from __future__ import annotations
 import tkinter as tk
 from typing import Callable, Optional
 
-from .primitives import CanvasWidget, Tooltip, draw_round_rect, ellipsize
+from .primitives import (CanvasWidget, Tooltip, draw_round_rect, ellipsize,
+                         widget_size)
 
 
 class CheckRow(CanvasWidget):
@@ -74,8 +75,7 @@ class CheckRow(CanvasWidget):
         from .. import theme as theme_mod
 
         self.delete("all")
-        width = self.winfo_width()
-        height = self.winfo_height() or self.HEIGHT
+        width, height = widget_size(self, 0, self.HEIGHT)
         if width <= 1:
             return
         t = self.theme

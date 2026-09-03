@@ -20,7 +20,7 @@ Design constraints that drive this whole package:
 __all__ = ["__version__", "__author__", "APP_NAME", "APP_TAGLINE"]
 
 #: Semantic version, surfaced in the About panel and in built artifacts.
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 #: Product name used for window titles and the data directory.
 APP_NAME = "CheckMod"
@@ -29,6 +29,6 @@ APP_NAME = "CheckMod"
 APP_TAGLINE = "Moderation checklist & AHT companion"
 
 #: Credited in Dev Mode > Info, in the Windows file properties and in the
-#: share bundle's README. Defined once so it can be changed in a single
+#: the project README. Defined once so it can be changed in a single
 #: place rather than hunted for across the tree.
 __author__ = "Iván Licea (@JustRab)"

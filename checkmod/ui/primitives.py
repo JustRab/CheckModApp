@@ -64,6 +64,24 @@ def draw_round_rect(canvas: tk.Canvas, x1, y1, x2, y2, radius,
     )
 
 
+def widget_size(widget, fallback_width: float, fallback_height: float):
+    """``(width, height)`` for a widget, substituting sizes before layout.
+
+    ``winfo_width()``/``winfo_height()`` return **1** until Tk has laid the
+    widget out, and ``1`` is truthy - so the obvious ``winfo_width() or
+    fallback`` keeps the 1 and paints a one-pixel widget. That is exactly how
+    the title bar came to draw its contents at y=0. Every canvas widget here
+    goes through this instead.
+    """
+    try:
+        width = widget.winfo_width()
+        height = widget.winfo_height()
+    except tk.TclError:                     # pragma: no cover - destroyed
+        return float(fallback_width), float(fallback_height)
+    return (float(width) if width > 1 else float(fallback_width),
+            float(height) if height > 1 else float(fallback_height))
+
+
 def ellipsize(text: str, limit: int) -> str:
     """Trim ``text`` to ``limit`` characters with a trailing ellipsis."""
     text = text or ""
@@ -218,8 +236,7 @@ class Button(CanvasWidget):
 
     def _redraw(self) -> None:
         self.delete("all")
-        width = self.winfo_width() or int(self["width"])
-        height = self.winfo_height() or int(self["height"])
+        width, height = widget_size(self, int(self["width"]), int(self["height"]))
         if width <= 1 or height <= 1:
             return
         fill, fg, outline = self._palette()
@@ -233,12 +250,9 @@ class Button(CanvasWidget):
 
     def measure(self) -> int:
         """Ideal width in pixels for the current label."""
-        import tkinter.font as tkfont
-
         try:
-            font = tkfont.Font(font=self.fonts[self.font_key])
-            return font.measure(self.text) + self.PAD_X * 2
-        except tk.TclError:  # pragma: no cover
+            return self.fonts.measure(self.text, self.font_key) + self.PAD_X * 2
+        except Exception:  # pragma: no cover
             return len(self.text) * 8 + self.PAD_X * 2
 
 
@@ -282,7 +296,9 @@ class Segmented(CanvasWidget):
     def _index_at(self, x: float) -> int:
         if not self.options:
             return -1
-        width = self.winfo_width() or 1
+        # Guards the division, not the layout: an unmapped control cannot be
+        # clicked, so there is no first-paint case to fall back for here.
+        width = max(1, self.winfo_width())
         slot = width / float(len(self.options))
         index = int(x // slot)
         return index if 0 <= index < len(self.options) else -1
@@ -371,8 +387,7 @@ class Ring(CanvasWidget):
         from .. import theme as theme_mod
 
         self.delete("all")
-        width = self.winfo_width() or self.size
-        height = self.winfo_height() or self.size
+        width, height = widget_size(self, self.size, self.size)
         if width <= 1 or height <= 1:
             return
         size = min(width, height)
@@ -563,8 +578,7 @@ class Switch(CanvasWidget):
         from .. import theme as theme_mod
 
         self.delete("all")
-        width = self.winfo_width() or self.WIDTH
-        height = self.winfo_height() or self.HEIGHT
+        width, height = widget_size(self, self.WIDTH, self.HEIGHT)
         if width <= 1 or height <= 1:
             return
         radius = height / 2
@@ -610,17 +624,42 @@ class ScrollFrame(tk.Frame):
         self.body.bind("<Configure>", self._on_body_configure)
         self.canvas.bind("<Configure>", self._on_canvas_configure)
         self._bind_wheel(self)
+        # Global bindings outlive the widget unless they are released, and a
+        # stale handler keeps firing against a destroyed canvas.
+        self.bind("<Destroy>", self._release_wheel)
 
     # -- scrolling -----------------------------------------------------
+    #: Wheel events differ per platform: a delta on Windows/macOS, buttons 4
+    #: and 5 on X11.
+    WHEEL_SEQUENCES = ("<MouseWheel>", "<Button-4>", "<Button-5>")
+
     def _bind_wheel(self, widget) -> None:
-        """Bind wheel events on the whole subtree (Windows/macOS + X11)."""
-        widget.bind_all("<MouseWheel>", self._on_wheel, add="+")
-        widget.bind_all("<Button-4>", self._on_wheel, add="+")
-        widget.bind_all("<Button-5>", self._on_wheel, add="+")
+        """Bind wheel events on the whole subtree (Windows/macOS + X11).
+
+        These have to be global: Tk delivers a wheel event to the widget under
+        the pointer and then up its *bind tags*, not to ancestor widgets, so
+        binding the container alone would miss every row inside it.
+        :meth:`_release_wheel` gives them back on destroy.
+        """
+        for sequence in self.WHEEL_SEQUENCES:
+            widget.bind_all(sequence, self._on_wheel, add="+")
+
+    def _release_wheel(self, event=None) -> None:
+        """Drop the global wheel bindings when this container goes away."""
+        if event is not None and event.widget is not self:
+            return          # a child was destroyed, not the container
+        for sequence in self.WHEEL_SEQUENCES:
+            try:
+                self.unbind_all(sequence)
+            except tk.TclError:
+                pass
 
     def _on_wheel(self, event) -> None:
-        if not self.winfo_ismapped():
-            return
+        try:
+            if not self.winfo_exists() or not self.winfo_ismapped():
+                return
+        except tk.TclError:
+            return          # destroyed between the event and this callback
         # Only scroll when the pointer is actually over this container.
         widget = self.winfo_containing(event.x_root, event.y_root)
         node = widget
@@ -636,8 +675,11 @@ class ScrollFrame(tk.Frame):
             delta = 1
         else:
             delta = -1 if event.delta > 0 else 1
-        self.canvas.yview_scroll(delta * 2, "units")
-        self._draw_indicator()
+        try:
+            self.canvas.yview_scroll(delta * 2, "units")
+            self._draw_indicator()
+        except tk.TclError:
+            pass
 
     def _on_body_configure(self, _event=None) -> None:
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))

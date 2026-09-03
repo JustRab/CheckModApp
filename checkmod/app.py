@@ -26,6 +26,7 @@ from typing import List, Optional, Tuple
 
 from . import APP_NAME, __version__, paths
 from .config import Config
+from . import alerts
 from .history import History
 from .i18n import Translator
 from .session import Session, format_duration
@@ -68,11 +69,16 @@ class App:
         self.tutorial: Optional[Tutorial] = None
         self._restyle_job = None
         self._tick_job = None
+        self._save_job = None
         self._over_alerted = False
         self._flash_state = False
 
         self._setup_root()
         self.rebuild_shell()
+        # Settings are flushed on a short debounce instead of on every
+        # assignment: dragging a slider produces dozens of changes per second,
+        # and each one was rewriting settings.json and copying the backup.
+        self.config.autosave = False
         self.config.subscribe(self._on_config_change)
 
         # Restore the previously selected case type so the app is usable the
@@ -376,8 +382,22 @@ class App:
         if section and isinstance(self.view, DevView):
             self.view.show(section)
 
+    def schedule_config_save(self, delay_ms: int = 400) -> None:
+        """Write settings once the changes stop arriving."""
+        if self._save_job:
+            try:
+                self.root.after_cancel(self._save_job)
+            except tk.TclError:
+                pass
+        self._save_job = self.root.after(delay_ms, self._flush_config)
+
+    def _flush_config(self) -> None:
+        self._save_job = None
+        self.config.save()
+
     def _on_config_change(self, key: str) -> None:
         """React to a settings change coming from anywhere in the app."""
+        self.schedule_config_save()
         if key in ("theme", "accent", "palette_overrides", "font_family", "font_scale",
                    "corner_radius", "compact", "show_ring", "show_footer_stats",
                    "language", "mode", "*"):
@@ -435,6 +455,7 @@ class App:
         if not self.config.get("compact") and self.config.get("mode") != "dev":
             window["h"] = height
         self.config.set("window", window, notify=False)
+        self.schedule_config_save()
 
     def center_window(self) -> None:
         """Re-centre the window (recovery from an off-screen position)."""
@@ -608,8 +629,16 @@ class App:
         self.apply_adaptive_target()
         self.refresh_views()
 
-    def on_check_toggled(self, _check_id: str, _value: bool) -> None:
-        """Callback from a checklist row; refreshes derived UI state."""
+    def on_check_toggled(self, check_id: str, value: bool) -> None:
+        """Record a checklist row's new state, then refresh derived UI.
+
+        The row owns its own visuals but the session is the source of truth
+        for everything downstream - the Complete button's gate, the pending
+        count, and the record written to history. This used to ignore both
+        arguments, so a box ticked by clicking looked ticked and was still
+        logged as false.
+        """
+        self.session.checks[check_id] = bool(value)
         if isinstance(self.view, UserView):
             self.view._sync_controls()      # noqa: SLF001 - same package, intentional
             self.view._sync_mini_checks()   # noqa: SLF001
@@ -713,17 +742,19 @@ class App:
         session.prealert_fired = True
         if remaining <= 0:
             return          # already past the target; the over-alert covers it
-        if self.config.get("sound_enabled", False):
-            self._beep(pattern=(1180, 90))
+        self.play_alert("prealert")
         self._flash_prealert()
 
     def _flash_prealert(self, times: int = 4) -> None:
         """Blink the title-bar status dot so the heads-up is visible too."""
         if not self.titlebar or times <= 0:
             return
-        color = self.theme["warn"] if times % 2 else self.theme["bg_alt"]
-        self.titlebar.set_status_color(color)
-        self.root.after(120, lambda: self._flash_prealert(times - 1))
+        try:
+            color = self.theme["warn"] if times % 2 else self.theme["bg_alt"]
+            self.titlebar.set_status_color(color)
+            self.root.after(120, lambda: self._flash_prealert(times - 1))
+        except tk.TclError:
+            pass        # the window closed part-way through the flash
 
     def _check_over_alert(self) -> None:
         """Beep once, at most, when a case first passes its AHT target."""
@@ -735,26 +766,19 @@ class App:
             return
         self._over_alerted = True
         self.session.over_alert_fired = True
-        if self.config.get("sound_enabled", False):
-            # Two low tones, clearly different from the single high pre-alert.
-            self._beep(pattern=(660, 160))
-            self.root.after(200, lambda: self._beep(pattern=(660, 160)))
+        self.play_alert("over")
 
-    def _beep(self, pattern=(880, 140)) -> None:
-        """Play a short alert using only what the platform already provides.
+    def play_alert(self, kind: str, force: bool = False) -> bool:
+        """Play one of the generated alert patterns.
 
-        ``pattern`` is ``(frequency_hz, duration_ms)``. Elsewhere Tk's bell is
-        the only thing guaranteed to exist, so the pitch is ignored there.
+        ``force`` bypasses the sound setting, for the test buttons in Dev
+        Mode. Returns whether audio was produced, so callers can tell the
+        difference between "muted" and "this platform has no audio".
         """
-        try:
-            if sys.platform.startswith("win"):
-                import winsound
-
-                winsound.Beep(int(pattern[0]), int(pattern[1]))
-            else:
-                self.root.bell()
-        except Exception:
-            pass
+        if not force and not self.config.get("sound_enabled", True):
+            return False
+        repeats = int(self.config.get("alert_repeats", 2)) if kind == "over" else 1
+        return alerts.play(kind, root=self.root, repeats=repeats)
 
     # ------------------------------------------------------------------
     # Help
@@ -797,8 +821,14 @@ class App:
     def shutdown(self) -> None:
         """Persist geometry and destroy the window."""
         try:
+            if self._save_job:
+                self.root.after_cancel(self._save_job)
+                self._save_job = None
+        except tk.TclError:
+            pass
+        try:
             self.snap_and_store()
-            self.config.save()
+            self.config.save()          # flush anything the debounce still holds
         except Exception:
             pass
         if self._tick_job:

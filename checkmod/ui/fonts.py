@@ -70,6 +70,11 @@ class Fonts:
         self.family = resolve_family(family)
         self.mono = resolve_family("", PREFERRED_MONO)
         self._cache: Dict[str, tuple] = {}
+        # Measured widths and line heights are asked for inside redraw paths
+        # that run several times a second. Constructing a tkfont.Font per call
+        # is a Tk round trip each time, so the objects are memoised here - the
+        # set is immutable for the life of a Fonts instance.
+        self._measurers: Dict[str, "tkfont.Font"] = {}
         for role, (size, style) in SCALE.items():
             points = max(7, int(round(size * self.scale)))
             self._cache[role] = (self.family, points, style)
@@ -83,17 +88,25 @@ class Fonts:
     def get(self, role: str, default=None):
         return self._cache.get(role, default or self._cache["body"])
 
+    def _measurer(self, role: str):
+        """Memoised ``tkfont.Font`` used only for measurement."""
+        font = self._measurers.get(role)
+        if font is None:
+            font = tkfont.Font(font=self[role])
+            self._measurers[role] = font
+        return font
+
     def height(self, role: str = "body") -> int:
         """Line height in pixels for ``role`` (used for manual layout)."""
         try:
-            return tkfont.Font(font=self[role]).metrics("linespace")
-        except Exception:  # pragma: no cover
+            return self._measurer(role).metrics("linespace")
+        except Exception:  # pragma: no cover - no Tk root, or role destroyed
             return int(self[role][1] * 1.6)
 
     def measure(self, text: str, role: str = "body") -> int:
         """Pixel width of ``text`` in ``role``."""
         try:
-            return tkfont.Font(font=self[role]).measure(text)
+            return self._measurer(role).measure(text)
         except Exception:  # pragma: no cover
             return len(text) * 7
 

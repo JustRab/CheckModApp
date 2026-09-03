@@ -35,6 +35,25 @@ class History:
     def __init__(self, path=None, enabled: bool = True) -> None:
         self.path = path or paths.history_file()
         self.enabled = enabled
+        # Parsed records, memoised against the file's identity. One user
+        # action can ask for the log several times over - today's summary, the
+        # weekly plan, the adaptive target - and each was a fresh read and
+        # re-parse of every line.
+        self._cache: Optional[List[Dict[str, Any]]] = None
+        self._cache_signature = None
+
+    def signature(self):
+        """Cheap identity for the file: ``(mtime_ns, size)``, or ``None``."""
+        try:
+            info = os.stat(self.path)
+        except OSError:
+            return None
+        return (info.st_mtime_ns, info.st_size)
+
+    def invalidate(self) -> None:
+        """Forget the cached records after this process changes the file."""
+        self._cache = None
+        self._cache_signature = None
 
     # ------------------------------------------------------------------
     # Writing
@@ -47,6 +66,7 @@ class History:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.path, "a", encoding="utf-8") as handle:
                 handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            self.invalidate()
             return True
         except OSError:
             return False
@@ -78,8 +98,10 @@ class History:
                 for record in records:
                     handle.write(json.dumps(record, ensure_ascii=False) + "\n")
             os.replace(tmp, self.path)
+            self.invalidate()
             return True
         except OSError:
+            self.invalidate()
             return False
 
     def remove_last(self) -> Optional[Dict[str, Any]]:
@@ -101,6 +123,7 @@ class History:
         try:
             if os.path.exists(self.path):
                 os.remove(self.path)
+            self.invalidate()
             return True
         except OSError:
             return False
@@ -109,7 +132,18 @@ class History:
     # Reading
     # ------------------------------------------------------------------
     def load(self, since_ts: Optional[float] = None) -> List[Dict[str, Any]]:
-        """Read records, skipping any line that is not valid JSON."""
+        """Read records, skipping any line that is not valid JSON.
+
+        The parse is memoised against the file's mtime and size, so repeated
+        queries in one refresh cost one read. An edit made by anything else -
+        a hand-edit, another copy of the app - changes the signature and is
+        picked up on the next call.
+        """
+        signature = self.signature()
+        if self._cache is not None and signature == self._cache_signature:
+            return ([r for r in self._cache if r.get("ts", 0) >= since_ts]
+                    if since_ts is not None else list(self._cache))
+
         records: List[Dict[str, Any]] = []
         try:
             with open(self.path, "r", encoding="utf-8") as handle:
@@ -123,14 +157,17 @@ class History:
                         continue
                     if not isinstance(record, dict):
                         continue
-                    if since_ts is not None and record.get("ts", 0) < since_ts:
-                        continue
                     records.append(record)
         except FileNotFoundError:
+            self._cache, self._cache_signature = [], signature
             return []
         except OSError:
             return []
-        return records
+
+        self._cache, self._cache_signature = records, signature
+        if since_ts is not None:
+            return [r for r in records if r.get("ts", 0) >= since_ts]
+        return list(records)
 
     # ------------------------------------------------------------------
     # Statistics

@@ -25,9 +25,8 @@ only into your own profile folders, so neither needs admin rights and neither
 touches the registry.
 
 **How do I share the app with a teammate without making the repo public?**
-Hand them `CheckMod-<version>-share.zip` from the release — it has both
-builds, a README and the IT one-pager, and needs no repository access.
-See [DISTRIBUTION.md](DISTRIBUTION.md).
+Hand them `CheckMod-folder.zip` from the release — it is the whole app and
+needs no repository access. See [DISTRIBUTION.md](DISTRIBUTION.md).
 
 **Why is there no minimise button?**
 The window has no OS decorations — that is what lets it be a small, identical
@@ -88,6 +87,11 @@ to bring the weekly number back to target.
 Yes. Elapsed time is kept and only the target changes, because reclassifying
 a case part-way through is normal.
 
+**Does the timer keep running when I lock my PC?**
+Yes, since 1.3.0 — including through a full suspend. Before that the timer
+used only the monotonic clock, which Windows freezes while the machine is
+asleep, so a break taken without pausing was silently dropped from the AHT.
+
 **What happens to paused time?**
 It is excluded from the logged AHT by default. *Dev Mode → Rules → Count
 paused time* includes it.
@@ -128,9 +132,10 @@ approves software on your machines: what it does, what it touches, why the
 warning appears, and how to verify every claim.
 
 **Which download should my team use?**
-`CheckMod-folder.zip` on a managed corporate machine — unzip anywhere and run
-the exe inside. `CheckMod.exe` if you just want one file and your machine is
-not locked down. They are the same application.
+`CheckMod-folder.zip` — it is the only one. Unzip anywhere and run the exe
+inside. Releases used to also carry a single-file build; it was the same
+application and only made people ask which to pick, so it is no longer
+published. `packaging/CheckMod.spec` still builds one locally if you want it.
 
 **Nothing happens when I double-click the exe.**
 Wait a couple of seconds: a one-file build unpacks itself before starting.
