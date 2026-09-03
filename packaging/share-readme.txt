@@ -30,6 +30,9 @@ YOUR DATA
   Settings and history live in %APPDATA%\CheckMod as plain text you can read
   or delete. Dev Mode - Data - Erase all data removes everything.
 
+CREDITS
+  CheckMod was created by Iván (@JustRab). MIT licence.
+
 CHECKSUMS
   SHA256SUMS.txt accompanies the download if your IT team wants to allow-list
   this exact build.

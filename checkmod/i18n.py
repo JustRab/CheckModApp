@@ -219,6 +219,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "dlg.shortcut_failed": "The shortcut could not be created. The folder may be managed by your organisation.",
         # --- misc ------------------------------------------------------------
         "misc.version": "Version",
+        "misc.created_by": "Created by",
         "misc.shortcuts": "Keyboard shortcuts",
         "misc.none": "Unlimited",
         "misc.days": "days",

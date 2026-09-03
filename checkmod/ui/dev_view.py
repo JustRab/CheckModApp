@@ -26,7 +26,7 @@ import time
 import tkinter as tk
 from typing import Callable, Dict, Optional
 
-from .. import __version__, paths, shortcuts, theme as theme_mod
+from .. import __author__, __version__, paths, shortcuts, theme as theme_mod
 from ..config import DEFAULT_TARGET_S, new_id
 from ..session import format_duration, parse_duration
 from . import dialogs
@@ -744,7 +744,10 @@ class DevView(tk.Frame):
                  font=fonts["small"], anchor="w").pack(fill="x", padx=12)
         tk.Label(card, text=f"{app.t('misc.version')} {__version__}", bg=theme["surface"],
                  fg=theme["text_faint"], font=fonts["tiny"], anchor="w").pack(
-            fill="x", padx=12, pady=(6, 12))
+            fill="x", padx=12, pady=(6, 0))
+        tk.Label(card, text=f"{app.t('misc.created_by')} {__author__}",
+                 bg=theme["surface"], fg=theme["text_faint"], font=fonts["tiny"],
+                 anchor="w").pack(fill="x", padx=12, pady=(0, 12))
 
         self._action(card, app.t("tb.help"), app.show_tutorial, "primary")
 

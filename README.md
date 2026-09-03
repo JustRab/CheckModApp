@@ -312,6 +312,11 @@ CheckModApp/
 
 ---
 
+## Credits
+
+Created by **Iván** ([@JustRab](https://github.com/JustRab)), for Trust & Safety
+moderation work.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
