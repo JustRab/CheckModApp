@@ -31,7 +31,7 @@ YOUR DATA
   or delete. Dev Mode - Data - Erase all data removes everything.
 
 CREDITS
-  CheckMod was created by Iván (@JustRab). MIT licence.
+  CheckMod was created by Iván Licea (@JustRab). MIT licence.
 
 CHECKSUMS
   SHA256SUMS.txt accompanies the download if your IT team wants to allow-list

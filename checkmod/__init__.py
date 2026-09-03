@@ -31,4 +31,4 @@ APP_TAGLINE = "Moderation checklist & AHT companion"
 #: Credited in Dev Mode > Info, in the Windows file properties and in the
 #: share bundle's README. Defined once so it can be changed in a single
 #: place rather than hunted for across the tree.
-__author__ = "Iván (@JustRab)"
+__author__ = "Iván Licea (@JustRab)"

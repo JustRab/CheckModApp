@@ -314,7 +314,7 @@ CheckModApp/
 
 ## Credits
 
-Created by **Iván** ([@JustRab](https://github.com/JustRab)), for Trust & Safety
+Created by **Iván Licea** ([@JustRab](https://github.com/JustRab)), for Trust & Safety
 moderation work.
 
 ## License
