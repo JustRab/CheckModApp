@@ -15,7 +15,7 @@ from __future__ import annotations
 import tkinter as tk
 from typing import Callable, Optional
 
-from .primitives import Button, draw_round_rect
+from .primitives import Button, draw_round_rect, widget_size
 
 #: (title key, body key, illustration name) for each step, in order.
 STEPS = [
@@ -174,8 +174,7 @@ class Tutorial(tk.Frame):
         """Draw the diagram for the current step."""
         canvas = self.canvas
         canvas.delete("all")
-        width = canvas.winfo_width()
-        height = canvas.winfo_height() or 150
+        width, height = widget_size(canvas, 0, 150)
         if width <= 1:
             return
         theme = self.app.theme

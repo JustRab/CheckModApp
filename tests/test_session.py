@@ -8,6 +8,7 @@ assertions are exact, not approximate, and the suite runs instantly.
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -281,84 +282,58 @@ def test_snapshot_marks_a_case_that_ran_over_target():
 # ----------------------------------------------------------------------
 # Suspended machines
 # ----------------------------------------------------------------------
-class FakeWall:
-    """Wall clock the tests advance independently of the monotonic one."""
+def test_the_default_clock_counts_time_spent_suspended():
+    """Locking and suspending a PC must not silently shorten a case.
 
-    def __init__(self) -> None:
-        self.now = 1_700_000_000.0
+    On Linux CLOCK_MONOTONIC stops while suspended and CLOCK_BOOTTIME does
+    not, so BOOTTIME is what the session must pick. On Windows there is no
+    CLOCK_BOOTTIME and none is needed: time.monotonic() is GetTickCount64(),
+    whose biased interrupt time already includes sleep and hibernation.
+    """
+    from checkmod.session import suspend_aware_clock
 
-    def __call__(self) -> float:
-        return self.now
-
-    def advance(self, seconds: float) -> None:
-        self.now += seconds
-
-
-def make_sleepy_session(target: int = 300):
-    """A session with both clocks under the test's control."""
-    clock, wall = FakeClock(), FakeWall()
-    session = Session(clock=clock, wall_clock=wall)
-    session.bind_case({"id": "voice", "name": "Voice Chat", "target_s": target},
-                      autostart=False)
-    session.sync_checks([{"id": "a"}, {"id": "b"}])
-    return session, clock, wall
+    clock = suspend_aware_clock()
+    if hasattr(time, "CLOCK_BOOTTIME"):
+        assert abs(clock() - time.clock_gettime(time.CLOCK_BOOTTIME)) < 0.5
+    else:
+        assert clock is time.monotonic
 
 
-def both(clock, wall, seconds):
-    """Advance both clocks together - ordinary running time."""
-    clock.advance(seconds)
-    wall.advance(seconds)
+def test_the_default_clock_is_monotonic():
+    """No wall-clock component: a clock correction cannot move a case."""
+    from checkmod.session import suspend_aware_clock
+
+    clock = suspend_aware_clock()
+    readings = [clock() for _ in range(50)]
+    assert readings == sorted(readings)
 
 
-def test_time_the_machine_slept_through_still_counts():
-    """Windows freezes time.monotonic() while suspended; wall time covers it."""
-    session, clock, wall = make_sleepy_session()
+def test_a_session_built_without_a_clock_uses_the_suspend_aware_one():
+    session = Session()
     session.start()
-    both(clock, wall, 60)
+    assert session.elapsed >= 0
+    assert session.state == RUNNING
+
+
+def test_elapsed_tracks_the_clock_across_a_suspend_sized_jump():
+    """A single injected clock stands in for a machine that slept."""
+    session, clock = make_session(target=300)
+    session.start()
+    clock.advance(60)
     assert session.elapsed == 60
 
-    # The moderator locks the PC and it suspends for ten minutes: real time
-    # passes but the monotonic clock does not move.
-    wall.advance(600)
+    clock.advance(600)          # the gap a suspend would produce
     assert session.elapsed == 660
 
-    both(clock, wall, 30)
-    assert session.elapsed == 690
-
-
-def test_a_sleep_gap_is_kept_across_a_pause():
-    session, clock, wall = make_sleepy_session()
-    session.start()
-    both(clock, wall, 10)
-    wall.advance(300)               # suspended while running
     session.pause()
-    assert session.elapsed == 310
-
-    both(clock, wall, 5)            # paused time does not count
-    assert session.elapsed == 310
-
-
-def test_paused_time_also_covers_a_sleep_gap():
-    session, clock, wall = make_sleepy_session()
-    session.start()
-    both(clock, wall, 10)
-    session.pause()
-    wall.advance(120)               # suspended while paused
-    assert session.paused_seconds == 120
-    assert session.elapsed == 10
-
-
-def test_a_backwards_clock_correction_cannot_shorten_a_case():
-    """Taking the max of both deltas makes the stopwatch monotonic in effect."""
-    session, clock, wall = make_sleepy_session()
-    session.start()
-    both(clock, wall, 100)
-    wall.advance(-3600)             # NTP correction, or DST on a naive clock
-    assert session.elapsed == 100
+    clock.advance(30)           # paused: not handle time
+    assert session.elapsed == 660
+    assert session.paused_seconds == 30
 
 
 def test_elapsed_never_goes_negative():
-    session, clock, wall = make_sleepy_session()
+    """Guards a mark taken from a different clock, not normal operation."""
+    session, clock = make_session()
     session.start()
-    wall.advance(-50)
+    clock.now -= 50
     assert session.elapsed >= 0

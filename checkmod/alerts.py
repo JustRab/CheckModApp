@@ -3,8 +3,8 @@
 ``winsound.Beep`` produces one flat square-wave tone. It is easy to miss in a
 room with a headset on, which defeats the point of an AHT alert. So the tones
 here are synthesised into a small in-memory WAV and handed to
-``winsound.PlaySound``, which plays through the normal audio device (and
-therefore the user's headset) at the system volume.
+``winsound.PlaySound`` on a worker thread, which plays through the normal
+audio device (and therefore the user's headset) at the system volume.
 
 Two distinct patterns, so they can be told apart without looking:
 
@@ -25,6 +25,7 @@ import io
 import math
 import struct
 import sys
+import threading
 import wave
 from typing import Dict, Sequence, Tuple
 
@@ -105,46 +106,58 @@ def wav_for(kind: str) -> bytes:
     return _cache[kind]
 
 
-def play(kind: str = "test", root=None, repeats: int = 1) -> bool:
-    """Play an alert. Returns ``True`` when audio was actually produced.
+def _play_windows(kind: str, repeats: int) -> bool:
+    """Play a pattern on Windows, off the UI thread. ``True`` if it started.
 
-    On Windows the WAV goes to ``PlaySound`` asynchronously so the interface
-    never blocks. Elsewhere there is no dependency-free way to reach the audio
-    device, so Tk's bell is rung once per tone group - audible, if plainer.
+    ``winsound`` refuses ``SND_MEMORY | SND_ASYNC`` outright - CPython raises
+    ``RuntimeError("Cannot play asynchronously from memory")`` rather than
+    degrading - so playing a generated buffer without blocking means calling
+    the *synchronous* form on a worker thread. ``PlaySound`` releases the GIL,
+    so the interface stays responsive and the repeats space themselves
+    naturally, each starting as the previous one finishes.
+    """
+    try:
+        import winsound
+    except Exception:
+        return False
+
+    def worker() -> None:
+        try:
+            # Rendered here rather than by the caller: the first render of a
+            # pattern costs ~15 ms, which would otherwise land on the UI
+            # thread at the exact moment the alert is due.
+            data = wav_for(kind)
+            for _ in range(repeats):
+                winsound.PlaySound(data, winsound.SND_MEMORY)
+        except Exception:
+            pass          # a missing or busy audio device is not fatal
+
+    try:
+        thread = threading.Thread(target=worker, name="checkmod-alert", daemon=True)
+        thread.start()
+        return True
+    except Exception:
+        return False
+
+
+def play(kind: str = "test", root=None, repeats: int = 1) -> bool:
+    """Play an alert.
+
+    Returns ``True`` only when the real tones were played. A ``False`` return
+    with a ``root`` still rings Tk's bell, which is all a platform without
+    dependency-free audio can offer - audible, if plainer.
     """
     repeats = max(1, min(5, int(repeats)))
-    if sys.platform.startswith("win"):
-        try:
-            import winsound
-
-            data = wav_for(kind)
-            flags = winsound.SND_MEMORY | winsound.SND_ASYNC
-            winsound.PlaySound(data, flags)
-            if repeats > 1 and root is not None:
-                # Re-trigger rather than concatenate, so the pattern's own
-                # length decides the spacing.
-                gap = int(_duration_ms(kind) + 90)
-                for step in range(1, repeats):
-                    root.after(gap * step,
-                               lambda: winsound.PlaySound(data, flags))
-            return True
-        except Exception:
-            pass  # fall through to the bell
+    if sys.platform.startswith("win") and _play_windows(kind, repeats):
+        return True
 
     if root is not None:
         try:
             for step in range(repeats):
                 root.after(step * 220, root.bell)
-            return True
         except Exception:
-            return False
+            pass
     return False
-
-
-def _duration_ms(kind: str) -> int:
-    """Total length of a pattern in milliseconds."""
-    pattern = {"prealert": PREALERT, "over": OVER, "test": TEST}.get(kind, TEST)
-    return int(sum(duration for _frequency, duration in pattern) * 1000)
 
 
 def available() -> bool:

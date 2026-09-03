@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import sys
 import time
 from pathlib import Path
@@ -294,3 +295,73 @@ def test_remove_last_deletes_only_the_newest_record(tmp_path):
 
 def test_remove_last_on_an_empty_log_returns_none(tmp_path):
     assert make_history(tmp_path).remove_last() is None
+
+
+# ----------------------------------------------------------------------
+# Caching
+# ----------------------------------------------------------------------
+def test_repeated_reads_parse_the_file_once(tmp_path, monkeypatch):
+    """One user action asks for the log several times; that was N re-parses."""
+    import builtins
+
+    history = make_history(tmp_path)
+    for _ in range(5):
+        history.append(record())
+
+    opens = []
+    real_open = builtins.open
+
+    def counting_open(file, *args, **kwargs):
+        if str(file) == str(history.path) and (not args or "r" in str(args[0])):
+            opens.append(file)
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", counting_open)
+    for _ in range(6):
+        assert len(history.load()) == 5
+    assert len(opens) == 1, f"parsed the file {len(opens)} times, expected 1"
+
+
+def test_a_new_record_invalidates_the_cache(tmp_path):
+    history = make_history(tmp_path)
+    history.append(record(duration=100))
+    assert len(history.load()) == 1
+
+    history.append(record(duration=200))
+    assert [r["duration_s"] for r in history.load()] == [100, 200]
+
+
+def test_removing_the_last_record_invalidates_the_cache(tmp_path):
+    history = make_history(tmp_path)
+    history.append(record(duration=100))
+    history.append(record(duration=200))
+    history.load()
+    history.remove_last()
+    assert [r["duration_s"] for r in history.load()] == [100]
+
+
+def test_wiping_invalidates_the_cache(tmp_path):
+    history = make_history(tmp_path)
+    history.append(record())
+    history.load()
+    history.wipe()
+    assert history.load() == []
+
+
+def test_an_external_edit_is_picked_up(tmp_path):
+    """The signature is (mtime, size), so another writer is not missed."""
+    history = make_history(tmp_path)
+    history.append(record(duration=100))
+    assert len(history.load()) == 1
+
+    with open(history.path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record(duration=300)) + "\n")
+    assert [r["duration_s"] for r in history.load()] == [100, 300]
+
+
+def test_the_cached_records_cannot_be_mutated_by_a_caller(tmp_path):
+    history = make_history(tmp_path)
+    history.append(record())
+    rows = history.load()
+    rows.append({"ts": 0})
+    assert len(history.load()) == 1

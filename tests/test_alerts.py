@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import sys
+import threading
 import wave
 from pathlib import Path
 
@@ -63,6 +64,89 @@ def test_a_silence_step_renders_as_silence():
     assert set(frames) == {0}
 
 
-def test_play_reports_failure_rather_than_raising_without_audio_or_root():
-    # No Tk root and (off Windows) no audio device: must return False quietly.
-    assert alerts.play("over", root=None) in (True, False)
+class FakeWinsound:
+    """Stand-in for the Windows module, recording how it was called."""
+
+    SND_MEMORY = 0x0004
+    SND_ASYNC = 0x0001
+    SND_FILENAME = 0x00020000
+
+    def __init__(self) -> None:
+        self.calls = []
+
+    def PlaySound(self, data, flags):        # noqa: N802 - mirrors winsound
+        # CPython rejects this combination outright rather than degrading:
+        #   RuntimeError: Cannot play asynchronously from memory
+        if flags & self.SND_ASYNC and flags & self.SND_MEMORY:
+            raise RuntimeError("Cannot play asynchronously from memory")
+        self.calls.append((data, flags))
+
+
+def test_windows_playback_does_not_use_the_rejected_flag_combination(monkeypatch):
+    """SND_MEMORY|SND_ASYNC raises, which the alert would swallow silently."""
+    fake = FakeWinsound()
+    monkeypatch.setitem(sys.modules, "winsound", fake)
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    assert alerts.play("over", root=None, repeats=2) is True
+    for thread in threading.enumerate():
+        if thread.name == "checkmod-alert":
+            thread.join(timeout=5)
+
+    assert fake.calls, "no sound was played"
+    for _data, flags in fake.calls:
+        assert not (flags & fake.SND_ASYNC), "uses the combination CPython rejects"
+        assert flags & fake.SND_MEMORY
+    assert len(fake.calls) == 2, "repeats did not play"
+    assert fake.calls[0][0] == alerts.wav_for("over")
+
+
+def test_windows_playback_survives_a_missing_audio_device(monkeypatch):
+    class Broken(FakeWinsound):
+        def PlaySound(self, data, flags):    # noqa: N802
+            raise RuntimeError("no audio device")
+
+    monkeypatch.setitem(sys.modules, "winsound", Broken())
+    monkeypatch.setattr(sys, "platform", "win32")
+    # The thread starts, so the call reports success; the failure inside it
+    # must not propagate or crash the app.
+    assert alerts.play("over", root=None) is True
+    for thread in threading.enumerate():
+        if thread.name == "checkmod-alert":
+            thread.join(timeout=5)
+
+
+def test_without_winsound_play_reports_that_no_real_audio_happened(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert alerts.play("over", root=None) is False
+
+
+def test_the_bell_fallback_rings_once_per_repeat(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    class FakeRoot:
+        def __init__(self):
+            self.scheduled = 0
+
+        def after(self, _delay, _callback):
+            self.scheduled += 1
+
+        def bell(self):
+            pass
+
+    root = FakeRoot()
+    # False: the bell rang, but the real tones did not play.
+    assert alerts.play("over", root=root, repeats=3) is False
+    assert root.scheduled == 3
+
+
+def test_repeats_are_clamped_to_a_sane_range(monkeypatch):
+    fake = FakeWinsound()
+    monkeypatch.setitem(sys.modules, "winsound", fake)
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    alerts.play("test", root=None, repeats=99)
+    for thread in threading.enumerate():
+        if thread.name == "checkmod-alert":
+            thread.join(timeout=5)
+    assert len(fake.calls) == 5

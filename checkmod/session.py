@@ -4,14 +4,46 @@ Deliberately free of any Tkinter import so the behaviour that matters most
 (AHT accounting) can be unit-tested headlessly and reasoned about on its own.
 The UI observes this object and paints it; it never owns timing logic.
 
-Time is measured with :func:`time.monotonic` so the elapsed value cannot be
-corrupted by daylight-saving changes or a clock sync mid-case.
+Time is measured with a monotonic clock (see :func:`suspend_aware_clock`), so
+the elapsed value cannot be corrupted by a daylight-saving change or a clock
+sync mid-case, and still counts time the machine spent suspended.
 """
 
 from __future__ import annotations
 
 import time
 from typing import Callable, Dict, Iterable, List, Optional
+
+def suspend_aware_clock() -> Callable[[], float]:
+    """A monotonic clock that also counts time the machine spent suspended.
+
+    Which call that is depends on the platform:
+
+    * **Windows** - ``time.monotonic()`` is ``GetTickCount64()``, and that
+      "biased" interrupt time already includes sleep and hibernation, so a
+      case keeps counting across a locked, suspended machine.
+    * **Linux** - ``time.monotonic()`` is ``CLOCK_MONOTONIC``, which stops
+      while suspended. ``CLOCK_BOOTTIME`` is the same clock plus suspend
+      time, so it is preferred when present.
+    * **Anywhere else** - plain ``time.monotonic()``.
+
+    Staying on a monotonic clock throughout is the point: a system clock
+    correction can then neither lengthen nor shorten a case. An earlier
+    attempt took the maximum of monotonic and wall-clock deltas, which made
+    every forward NTP step inflate the elapsed time - firing a false
+    over-target alarm and writing the inflated duration into history, where
+    it went on to skew the adaptive AHT target.
+    """
+    boottime = getattr(time, "CLOCK_BOOTTIME", None)
+    if boottime is not None:
+        try:
+            time.clock_gettime(boottime)
+        except (OSError, ValueError, AttributeError):
+            pass
+        else:
+            return lambda: time.clock_gettime(boottime)
+    return time.monotonic
+
 
 #: Lifecycle states of a session.
 IDLE = "idle"
@@ -66,21 +98,17 @@ class Session:
         can be advanced deterministically.
     """
 
-    def __init__(self, clock: Callable[[], float] = time.monotonic,
-                 wall_clock: Callable[[], float] = time.time) -> None:
-        self._clock = clock
-        self._wall = wall_clock
+    def __init__(self, clock: Optional[Callable[[], float]] = None) -> None:
+        self._clock = clock or suspend_aware_clock()
         self.case_id: Optional[str] = None
         self.case_name: str = ""
         self.target_s: int = 0        # effective target (may be adaptive)
         self.base_target_s: int = 0   # the case type's configured target
         self.state: str = IDLE
-        self._started_at: Optional[float] = None   # monotonic mark of the run
-        self._started_wall_at: Optional[float] = None   # wall-clock mark
+        self._started_at: Optional[float] = None   # clock mark of the run
         self._accumulated: float = 0.0             # completed run segments
         self._paused_total: float = 0.0            # time spent paused
         self._paused_at: Optional[float] = None
-        self._paused_wall_at: Optional[float] = None
         self.checks: Dict[str, bool] = {}
         self.started_wall: Optional[float] = None  # epoch, for the history log
         # Latches so each alert fires once per case rather than every tick.
@@ -90,28 +118,17 @@ class Session:
     # ------------------------------------------------------------------
     # Elapsed-time measurement
     # ------------------------------------------------------------------
-    def _segment(self, mono_start: Optional[float],
-                 wall_start: Optional[float]) -> float:
-        """Length of an open time segment, counting time the machine slept.
+    def _segment(self, start: Optional[float]) -> float:
+        """Length of an open time segment.
 
-        ``time.monotonic()`` is the right clock for a stopwatch - immune to
-        clock corrections and daylight-saving - but on Windows it does **not**
-        advance while the machine is suspended. A moderator who locks their
-        PC and walks away would come back to a timer that had skipped the
-        break, under-reporting the handle time.
-
-        Wall-clock time does cover suspension, so the segment is the longer of
-        the two deltas: monotonic governs normally, and the wall clock only
-        wins when real time genuinely passed that the monotonic clock missed.
-        Taking the maximum also means a clock correction that moves time
-        *backwards* cannot shorten a segment.
+        The clock is chosen by :func:`suspend_aware_clock`, so this already
+        includes any time the machine spent suspended and is immune to system
+        clock changes. The floor at zero guards only against a caller passing
+        a mark from a different clock.
         """
-        if mono_start is None:
+        if start is None:
             return 0.0
-        elapsed = self._clock() - mono_start
-        if wall_start is not None:
-            elapsed = max(elapsed, self._wall() - wall_start)
-        return max(0.0, elapsed)
+        return max(0.0, self._clock() - start)
 
     # ------------------------------------------------------------------
     # Configuration
@@ -145,25 +162,21 @@ class Session:
         """Start (or resume) the stopwatch."""
         if self.state == RUNNING:
             return
-        if self.state == PAUSED and self._paused_at is not None:
-            self._paused_total += self._segment(self._paused_at, self._paused_wall_at)
+        if self.state == PAUSED:
+            self._paused_total += self._segment(self._paused_at)
         self._paused_at = None
-        self._paused_wall_at = None
         self._started_at = self._clock()
-        self._started_wall_at = self._wall()
         if self.started_wall is None:
-            self.started_wall = self._wall()
+            self.started_wall = time.time()   # a timestamp, not a measurement
         self.state = RUNNING
 
     def pause(self) -> None:
         """Freeze the stopwatch, keeping the time accumulated so far."""
         if self.state != RUNNING:
             return
-        self._accumulated += self._segment(self._started_at, self._started_wall_at)
+        self._accumulated += self._segment(self._started_at)
         self._started_at = None
-        self._started_wall_at = None
         self._paused_at = self._clock()
-        self._paused_wall_at = self._wall()
         self.state = PAUSED
 
     def toggle(self) -> None:
@@ -174,11 +187,9 @@ class Session:
         """Return to a pristine state, optionally keeping the case type."""
         self.state = IDLE
         self._started_at = None
-        self._started_wall_at = None
         self._accumulated = 0.0
         self._paused_total = 0.0
         self._paused_at = None
-        self._paused_wall_at = None
         self.started_wall = None
         self.prealert_fired = False
         self.over_alert_fired = False
@@ -197,7 +208,7 @@ class Session:
         """Seconds of *active* handling time (paused time excluded)."""
         total = self._accumulated
         if self.state == RUNNING:
-            total += self._segment(self._started_at, self._started_wall_at)
+            total += self._segment(self._started_at)
         return total
 
     @property
@@ -205,7 +216,7 @@ class Session:
         """Seconds spent paused so far."""
         total = self._paused_total
         if self.state == PAUSED:
-            total += self._segment(self._paused_at, self._paused_wall_at)
+            total += self._segment(self._paused_at)
         return total
 
     def billable(self, count_paused: bool = False) -> float:
@@ -305,10 +316,8 @@ class Session:
         self.target_s = int(record.get("effective_target_s", self.base_target_s) or 0)
         self._accumulated = float(record.get("duration_s", 0) or 0)
         self._started_at = None
-        self._started_wall_at = None
         self._paused_total = float(record.get("paused_s", 0) or 0)
         self._paused_at = None
-        self._paused_wall_at = None
         self.state = PAUSED if self._accumulated else IDLE
         self.checks = {str(k): bool(v) for k, v in (record.get("checks") or {}).items()}
         self.prealert_fired = True      # already past this case's alerts

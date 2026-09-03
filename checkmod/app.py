@@ -69,11 +69,16 @@ class App:
         self.tutorial: Optional[Tutorial] = None
         self._restyle_job = None
         self._tick_job = None
+        self._save_job = None
         self._over_alerted = False
         self._flash_state = False
 
         self._setup_root()
         self.rebuild_shell()
+        # Settings are flushed on a short debounce instead of on every
+        # assignment: dragging a slider produces dozens of changes per second,
+        # and each one was rewriting settings.json and copying the backup.
+        self.config.autosave = False
         self.config.subscribe(self._on_config_change)
 
         # Restore the previously selected case type so the app is usable the
@@ -377,8 +382,22 @@ class App:
         if section and isinstance(self.view, DevView):
             self.view.show(section)
 
+    def schedule_config_save(self, delay_ms: int = 400) -> None:
+        """Write settings once the changes stop arriving."""
+        if self._save_job:
+            try:
+                self.root.after_cancel(self._save_job)
+            except tk.TclError:
+                pass
+        self._save_job = self.root.after(delay_ms, self._flush_config)
+
+    def _flush_config(self) -> None:
+        self._save_job = None
+        self.config.save()
+
     def _on_config_change(self, key: str) -> None:
         """React to a settings change coming from anywhere in the app."""
+        self.schedule_config_save()
         if key in ("theme", "accent", "palette_overrides", "font_family", "font_scale",
                    "corner_radius", "compact", "show_ring", "show_footer_stats",
                    "language", "mode", "*"):
@@ -436,6 +455,7 @@ class App:
         if not self.config.get("compact") and self.config.get("mode") != "dev":
             window["h"] = height
         self.config.set("window", window, notify=False)
+        self.schedule_config_save()
 
     def center_window(self) -> None:
         """Re-centre the window (recovery from an off-screen position)."""
@@ -729,9 +749,12 @@ class App:
         """Blink the title-bar status dot so the heads-up is visible too."""
         if not self.titlebar or times <= 0:
             return
-        color = self.theme["warn"] if times % 2 else self.theme["bg_alt"]
-        self.titlebar.set_status_color(color)
-        self.root.after(120, lambda: self._flash_prealert(times - 1))
+        try:
+            color = self.theme["warn"] if times % 2 else self.theme["bg_alt"]
+            self.titlebar.set_status_color(color)
+            self.root.after(120, lambda: self._flash_prealert(times - 1))
+        except tk.TclError:
+            pass        # the window closed part-way through the flash
 
     def _check_over_alert(self) -> None:
         """Beep once, at most, when a case first passes its AHT target."""
@@ -798,8 +821,14 @@ class App:
     def shutdown(self) -> None:
         """Persist geometry and destroy the window."""
         try:
+            if self._save_job:
+                self.root.after_cancel(self._save_job)
+                self._save_job = None
+        except tk.TclError:
+            pass
+        try:
             self.snap_and_store()
-            self.config.save()
+            self.config.save()          # flush anything the debounce still holds
         except Exception:
             pass
         if self._tick_job:

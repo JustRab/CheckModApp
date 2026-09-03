@@ -32,7 +32,8 @@ from ..config import DEFAULT_TARGET_S, new_id
 from ..session import format_duration, parse_duration
 from . import dialogs
 from .fonts import PREFERRED_FAMILIES, available_families
-from .primitives import Button, ScrollFrame, Switch, Slider, Tooltip, draw_round_rect
+from .primitives import (Button, ScrollFrame, Switch, Slider, Tooltip,
+                         draw_round_rect, widget_size)
 
 
 class DevView(tk.Frame):
@@ -1015,8 +1016,7 @@ class _ThemeSwatch(tk.Canvas):
 
     def _paint(self) -> None:
         self.delete("all")
-        width = self.winfo_width() or 62
-        height = self.winfo_height() or 44
+        width, height = widget_size(self, 62, 44)
         border = self.app.theme["accent"] if self.selected else self.app.theme["border"]
         draw_round_rect(self, 1, 1, width - 1, height - 1, 7,
                         fill=self.palette["bg"], outline=border,
@@ -1043,7 +1043,8 @@ class _ColorDot(tk.Canvas):
 
     def _paint(self) -> None:
         self.delete("all")
-        size = min(self.winfo_width() or self.size, self.winfo_height() or self.size)
+        width, height = widget_size(self, self.size, self.size)
+        size = min(width, height)
         pad = 2
         self.create_oval(pad, pad, size - pad, size - pad, fill=self.color,
                          outline=self.app.theme["text"] if self.selected else "",

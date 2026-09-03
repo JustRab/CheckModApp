@@ -507,3 +507,62 @@ def test_the_pending_count_follows_clicked_rows(app):
     app.view.checklist.rows["enforcement"]._on_click()
     app.root.update()
     assert app.session.pending_count == 2
+
+
+# ----------------------------------------------------------------------
+# Leaks and write amplification
+# ----------------------------------------------------------------------
+def test_refreshing_the_title_bar_does_not_pile_up_tooltip_bindings(app):
+    """A new Tooltip per refresh left every stale one still firing."""
+    app.root.update()
+    button = app.titlebar.btn_pin
+    before = button.bind("<Enter>")
+    for _ in range(10):
+        app.titlebar.refresh()
+    assert button.bind("<Enter>") == before
+
+
+def test_a_rebuilt_dev_view_does_not_pile_up_global_wheel_bindings(app):
+    """ScrollFrame binds the wheel globally; it must release on destroy."""
+    def handler_count():
+        # The callback id changes with each new ScrollFrame, so count the
+        # handlers rather than comparing the binding script verbatim.
+        return app.root.bind_all("<MouseWheel>").count("_on_wheel")
+
+    app.config.set("mode", "dev")
+    app._restyle_now()
+    app.root.update()
+    before = handler_count()
+    assert before >= 1, "the wheel was never bound"
+
+    for name in ("nord", "aurora", "forest", "paper", "midnight"):
+        app.config.set("theme", name)
+        app._restyle_now()
+        app.root.update()
+
+    assert handler_count() == before, "global wheel handlers accumulated"
+
+
+def test_dragging_a_slider_does_not_write_settings_on_every_step(app):
+    """Each assignment used to rewrite settings.json and copy the backup."""
+    writes = []
+    real_save = app.config.save
+    app.config.save = lambda: (writes.append(1), real_save())[1]
+
+    for step in range(40):
+        app.config.set("opacity", 0.60 + step * 0.005)
+    assert writes == [], "settings were written mid-drag"
+
+    # ...but the change is not lost: the debounce flushes it.
+    app._flush_config()
+    assert writes, "the debounced save never ran"
+    app.config.save = real_save
+
+
+def test_shutdown_flushes_a_pending_settings_change(app, tmp_path):
+    import json
+
+    app.config.set("opacity", 0.42)
+    app.shutdown()
+    with open(app.config.path, encoding="utf-8") as handle:
+        assert json.load(handle)["opacity"] == 0.42
