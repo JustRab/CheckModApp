@@ -371,3 +371,81 @@ def test_the_prealert_fires_once_shortly_before_the_target(app):
     app.config.set("prealert_enabled", False)
     app._check_prealert()
     assert app.session.prealert_fired is False
+
+
+# ----------------------------------------------------------------------
+# Layout switching must never cost the agent their work
+# ----------------------------------------------------------------------
+def test_switching_to_compact_and_back_preserves_the_case(app):
+    """Timer, ticks and case type all survive a layout change."""
+    app.select_case("voice")
+    app.session._accumulated = 300.0
+    app.session.toggle_check("escalation")
+    app.view.sync()
+    app.root.update()
+
+    app.toggle_compact()
+    app._restyle_now()
+    app.root.update()
+    assert app.session.case_id == "voice"
+    assert round(app.session.elapsed) == 300
+    assert app.session.checks["escalation"] is True
+
+    app.toggle_compact()
+    app._restyle_now()
+    app.root.update()
+    assert app.session.case_id == "voice"
+    assert round(app.session.elapsed) == 300
+    assert app.session.checks["escalation"] is True
+    # ...and the rebuilt rows reflect it, not just the model.
+    assert app.view.checklist.rows["escalation"].checked is True
+
+
+def test_ticks_made_in_compact_survive_the_return_to_full(app):
+    app.select_case("voice")
+    app.toggle_compact()
+    app._restyle_now()
+    app.root.update()
+
+    app.view._toggle_one("enforcement")
+    app.root.update()
+
+    app.toggle_compact()
+    app._restyle_now()
+    app.root.update()
+    assert app.view.checklist.rows["enforcement"].checked is True
+
+
+def test_the_compact_strip_is_tall_enough_for_its_content(app):
+    """A fixed strip height clipped the checklist chips at larger fonts."""
+    for scale in (1.0, 1.4):
+        app.config.set("font_scale", scale)
+        app.config.set("compact", True)
+        app._restyle_now()
+        app.root.update()
+        needed = app.view.winfo_reqheight() + app.chrome_height()
+        assert app.root.winfo_height() >= needed, (
+            f"compact strip clips its content at text scale {scale}")
+
+
+def test_the_compact_complete_button_is_not_labelled_ok(app):
+    """"OK" reads as "dismiss"; it files the case and clears the checklist."""
+    app.toggle_compact()
+    app._restyle_now()
+    app.root.update()
+    assert app.view.btn_complete.text != "OK"
+    assert app.view.btn_complete.variant == "primary"
+
+
+def test_taskbar_presence_is_harmless_off_windows(app):
+    """The ctypes path is Windows-only and must never raise elsewhere."""
+    app.config.set("show_in_taskbar", False)
+    app._apply_taskbar_presence()
+    app.config.set("show_in_taskbar", True)
+    app._apply_taskbar_presence()
+    app.root.update()
+    assert app.root.winfo_exists()
+
+
+def test_the_alert_sound_is_on_by_default(app):
+    assert app.config.get("sound_enabled") is True

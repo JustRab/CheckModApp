@@ -66,6 +66,9 @@ DEFAULTS: Dict[str, Any] = {
     # ----- Window ----------------------------------------------------------
     "always_on_top": True,
     "frameless": True,            # custom title bar instead of the OS one
+    # A borderless window is a "tool window" to the Windows shell, which hides
+    # it from the taskbar and Alt+Tab. This forces it back into both.
+    "show_in_taskbar": True,
     "snap_to_edges": True,
     "snap_threshold": 18,
     "remember_position": True,
@@ -74,7 +77,8 @@ DEFAULTS: Dict[str, Any] = {
     "auto_start_on_select": True,   # picking a case type starts the clock
     "warn_at_pct": 80,              # amber threshold, % of the AHT target
     "alert_on_over": True,          # red state + optional beep past target
-    "sound_enabled": False,
+    # On by default: an AHT alert nobody switched on is an alert nobody hears.
+    "sound_enabled": True,
     "confirm_reset": True,
     "require_all_checks": False,    # block "Complete" until every box is ticked
     "count_paused_time": False,
