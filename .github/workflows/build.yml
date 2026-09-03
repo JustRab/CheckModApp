@@ -101,7 +101,10 @@ jobs:
       - name: Publish checksums
         shell: pwsh
         run: |
-          $targets = Get-ChildItem dist -Filter *.exe, *.zip -File |
+          # -Filter takes a single string, so it cannot be handed a list of
+          # patterns; filter on the extension instead.
+          $targets = Get-ChildItem -Path dist -File |
+                     Where-Object { $_.Extension -eq '.exe' -or $_.Extension -eq '.zip' } |
                      Select-Object -ExpandProperty FullName
           $lines = foreach ($file in $targets) {
             $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
