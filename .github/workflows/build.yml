@@ -79,10 +79,31 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path dist-folder\CheckMod -DestinationPath dist\CheckMod-folder.zip
 
+      # One file a colleague can be handed directly - no repository access
+      # needed, which is the point when the repo stays private. The README
+      # text lives in packaging/share-readme.txt so it can be reviewed and
+      # edited as prose rather than as embedded YAML.
+      - name: Assemble the share bundle
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path checkmod/__init__.py `
+                      -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          $stage = "dist/bundle/CheckMod-$version"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Recurse dist-folder/CheckMod "$stage/CheckMod"
+          Copy-Item dist/CheckMod.exe "$stage/CheckMod-single-file.exe"
+          Copy-Item docs/IT-APPROVAL.md "$stage/IT-APPROVAL.md"
+          (Get-Content packaging/share-readme.txt -Raw).Replace('{VERSION}', $version) |
+            Set-Content -Encoding UTF8 "$stage/README.txt"
+          Compress-Archive -Path $stage -DestinationPath "dist/CheckMod-$version-share.zip"
+          Remove-Item -Recurse -Force dist/bundle
+
       - name: Publish checksums
         shell: pwsh
         run: |
-          $lines = foreach ($file in @("dist\CheckMod.exe", "dist\CheckMod-folder.zip")) {
+          $targets = Get-ChildItem dist -Filter *.exe, *.zip -File |
+                     Select-Object -ExpandProperty FullName
+          $lines = foreach ($file in $targets) {
             $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
             $size = "{0:N1} MB" -f ((Get-Item $file).Length / 1MB)
             "$hash  $(Split-Path $file -Leaf)  ($size)"
@@ -96,6 +117,7 @@ jobs:
           path: |
             dist/CheckMod.exe
             dist/CheckMod-folder.zip
+            dist/CheckMod-*-share.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
 
@@ -109,6 +131,8 @@ jobs:
           # splitting, which shellcheck flags (SC2086) and which breaks the
           # moment a path contains a space.
           files=(dist/CheckMod.exe dist/CheckMod-folder.zip dist/SHA256SUMS.txt)
+          shopt -s nullglob
+          files+=(dist/CheckMod-*-share.zip)
           gh release create "${GITHUB_REF_NAME}" \
             --title "CheckMod ${GITHUB_REF_NAME}" \
             --notes "Portable build - no installation and no administrator rights required.
@@ -117,6 +141,9 @@ jobs:
           * **CheckMod-folder.zip** - one folder. Preferred on managed corporate
             machines: it does not extract itself to %TEMP% at launch, which is the
             behaviour heuristic antivirus most often flags. Unzip and run the exe inside.
+          * **CheckMod-<version>-share.zip** - the whole thing in one file to hand
+            to a colleague: both layouts, a plain-language README and the IT summary.
+            Nobody needs repository access to use it.
           * **SHA256SUMS.txt** - hashes, so IT can allow-list the exact build.
 
           See docs/IT-APPROVAL.md for the summary an IT or security reviewer needs." \

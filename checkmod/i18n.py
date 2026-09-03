@@ -161,6 +161,14 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "dev.adaptive_max": "Never hand back more than",
         "dev.week_start": "Week starts on",
         "dev.undo_last": "Undo last logged case",
+        "dev.startup": "Shortcuts & start-up",
+        "dev.desktop_shortcut": "Desktop shortcut",
+        "dev.startup_shortcut": "Start when I sign in",
+        "dev.shortcut_unsupported": "Shortcuts are not supported on this platform.",
+        "dev.taskbar": "Show in the taskbar and Alt+Tab",
+        "dev.taskbar_hint": ("A borderless window is a tool window to Windows, which "
+                             "hides it from the taskbar. This forces it back in so "
+                             "the window cannot get lost behind another app."),
         "misc.cases": "cases",
         "dev.privacy_note": ("CheckMod never connects to the internet, sends no telemetry "
                              "and stores no personal data or case identifiers. Everything "
@@ -208,6 +216,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "dlg.close_q": "Close CheckMod? A case is still running.",
         "dlg.undo_q": "Remove the last logged case?\n\n{case}\n\nIf nothing is in progress it will be put back on the clock so you can correct it.",
         "dlg.nothing_to_undo": "There is no logged case to undo.",
+        "dlg.shortcut_failed": "The shortcut could not be created. The folder may be managed by your organisation.",
         # --- misc ------------------------------------------------------------
         "misc.version": "Version",
         "misc.shortcuts": "Keyboard shortcuts",

@@ -4,6 +4,39 @@ All notable changes to CheckMod are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] — 2026-09-02
+
+### Added
+
+- **The window now appears in the taskbar and Alt+Tab.** Removing the OS
+  decorations makes Windows classify the window as a *tool window*, which the
+  shell deliberately hides from both — so a window nudged behind another app
+  was effectively lost. It now clears `WS_EX_TOOLWINDOW` and sets
+  `WS_EX_APPWINDOW` on the frozen window. Best-effort and Windows-only: any
+  failure leaves the window exactly as it was, and *Dev Mode → Window → Show
+  in the taskbar and Alt+Tab* switches it off.
+- **Desktop shortcut and start-at-sign-in**, both in Dev Mode → Window. Both
+  write only into folders the user already owns — the Desktop folder and the
+  per-user Start-up folder — so neither needs administrator rights, a registry
+  key, a service or a scheduled task. Windows `.lnk` files are created through
+  PowerShell (no third-party dependency); Linux gets a freedesktop `.desktop`
+  entry. Failures are reported rather than silently swallowed.
+- **A one-file share bundle**, `CheckMod-<version>-share.zip`, built with every
+  release: both distributions plus a plain-language `README.txt` and the IT
+  one-pager. Release assets on a private repository still require repo access
+  to download, so this is the file to hand a colleague directly.
+  **[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)** covers the options.
+
+### Changed
+
+- **The alert sound is on by default.** An AHT alert nobody switched on is an
+  alert nobody hears.
+- **The compact layout's "OK" button is now a tick, styled as the primary
+  action.** It calls Complete, which files the case and clears the timer and
+  checklist — but "OK" reads as "dismiss this view", which made it an easy and
+  costly mis-click while switching layouts. The transport button steps back to
+  secondary so there is exactly one primary action on screen.
+
 ## [1.1.0] — 2026-09-02
 
 ### Added

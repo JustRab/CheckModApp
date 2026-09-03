@@ -19,6 +19,16 @@ and can open it.
 Yes. Turn on *Dev Mode → Data → Portable mode* and everything travels with
 the executable.
 
+**How do I make it start with Windows, or put it on my Desktop?**
+*Dev Mode → Window → Shortcuts & start-up* has a switch for each. Both write
+only into your own profile folders, so neither needs admin rights and neither
+touches the registry.
+
+**How do I share the app with a teammate without making the repo public?**
+Hand them `CheckMod-<version>-share.zip` from the release — it has both
+builds, a README and the IT one-pager, and needs no repository access.
+See [DISTRIBUTION.md](DISTRIBUTION.md).
+
 **Why is there no minimise button?**
 The window has no OS decorations — that is what lets it be a small, identical
 floating panel on every machine — so there is no taskbar entry to minimise
@@ -26,9 +36,18 @@ into. Use the compact layout instead (`Ctrl+M`, the **—** button, or a
 double-click on the title bar), or turn *Dev Mode → Window → Custom title
 bar* off to get the native chrome back.
 
-**It disappeared behind another window.**
+**It disappeared behind another window / I cannot find it.**
 Check the pin button in the title bar: filled means always-on-top is on,
-hollow means off. `Ctrl+T` toggles it.
+hollow means off (`Ctrl+T` toggles it). Since 1.2.0 the window also appears in
+the taskbar and Alt+Tab, so it can be recovered that way; if it somehow does
+not, turn off *Dev Mode → Window → Custom title bar* to get native chrome.
+
+**I switched between compact and normal and lost my case.**
+Layout switching preserves the timer, the ticks and the case type — there are
+tests pinning that. The likely culprit was the compact layout's **OK** button,
+which actually filed the case and cleared everything. It is a tick styled as
+the primary action from 1.2.0. If it happens again, `Ctrl+Z` (or the **↶**
+button) undoes the last completed case and puts it back on the clock.
 
 **I dragged it off-screen / changed monitors and cannot find it.**
 It clamps itself back on screen at launch. If it is still awkward, use *Dev

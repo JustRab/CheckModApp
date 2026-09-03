@@ -26,7 +26,7 @@ import time
 import tkinter as tk
 from typing import Callable, Dict, Optional
 
-from .. import __version__, paths, theme as theme_mod
+from .. import __version__, paths, shortcuts, theme as theme_mod
 from ..config import DEFAULT_TARGET_S, new_id
 from ..session import format_duration, parse_duration
 from . import dialogs
@@ -276,12 +276,16 @@ class DevView(tk.Frame):
 
     def _section_window(self, parent) -> None:
         app = self.app
+        theme, fonts = app.theme, app.fonts
         self._heading(parent, app.t("dev.window"))
         card = self._card(parent)
         self._switch_row(card, app.t("dev.always_on_top"), "always_on_top",
                          on_change=lambda _v: app.apply_window_flags())
         self._switch_row(card, app.t("dev.frameless"), "frameless",
                          on_change=lambda _v: app.rebuild_shell())
+        self._switch_row(card, app.t("dev.taskbar"), "show_in_taskbar",
+                         hint=app.t("dev.taskbar_hint"),
+                         on_change=lambda _v: app.apply_window_flags())
         self._switch_row(card, app.t("dev.snap"), "snap_to_edges")
         self._switch_row(card, app.t("dev.remember_pos"), "remember_position")
         self._slider_row(card, app.t("dev.snap_threshold"), "snap_threshold", 0, 60, 1,
@@ -292,6 +296,26 @@ class DevView(tk.Frame):
         card = self._card(parent)
         self._switch_row(card, app.t("tb.compact"), "compact",
                          on_change=lambda _v: app.schedule_restyle())
+
+        # --- shortcuts and start-up ----------------------------------
+        self._heading(parent, app.t("dev.startup"))
+        card = self._card(parent)
+        if not shortcuts.is_supported():
+            tk.Label(card, text=app.t("dev.shortcut_unsupported"), bg=theme["surface"],
+                     fg=theme["text_faint"], font=fonts["tiny"], anchor="w",
+                     justify="left", wraplength=290).pack(fill="x", padx=12, pady=10)
+        else:
+            desktop = self._row(card, app.t("dev.desktop_shortcut"),
+                                str(shortcuts.desktop_shortcut_path() or ""))
+            Switch(desktop, theme, fonts, value=shortcuts.has_desktop_shortcut(),
+                   on_change=lambda v: self._set_shortcut(shortcuts.set_desktop_shortcut, v),
+                   bg_token="surface").pack(side="right")
+
+            startup = self._row(card, app.t("dev.startup_shortcut"),
+                                str(shortcuts.startup_shortcut_path() or ""))
+            Switch(startup, theme, fonts, value=shortcuts.has_startup_shortcut(),
+                   on_change=lambda v: self._set_shortcut(shortcuts.set_startup_shortcut, v),
+                   bg_token="surface").pack(side="right")
 
     # -- case types (AHT) ---------------------------------------------
     def _section_cases(self, parent) -> None:
@@ -746,6 +770,12 @@ class DevView(tk.Frame):
     # ==================================================================
     # Actions
     # ==================================================================
+    def _set_shortcut(self, setter, enabled: bool) -> None:
+        """Create/remove a shortcut and report a failure rather than lying."""
+        if not setter(enabled):
+            dialogs.alert(self.app, self.app.t("dlg.shortcut_failed"))
+        self.refresh()
+
     def _toggle_week_start(self) -> None:
         """Flip the week boundary between Sunday and Monday."""
         current = self.app.config.get("week_starts_on", "sunday")

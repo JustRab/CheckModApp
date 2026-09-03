@@ -41,7 +41,8 @@ from .ui.user_view import UserView
 #: costing a fraction of a percent of one CPU core.
 TICK_MS = 200
 
-#: Height of the compact layout, in pixels (title bar excluded).
+#: Floor for the compact layout body, in pixels (title bar excluded). The
+#: actual height is the larger of this and what the content asks for.
 COMPACT_BODY_H = 104
 
 
@@ -145,6 +146,72 @@ class App:
             pass
         try:
             root.overrideredirect(bool(self.config.get("frameless", True)))
+        except tk.TclError:
+            pass
+        self._apply_taskbar_presence()
+
+    def _apply_taskbar_presence(self) -> None:
+        """Keep a borderless window in the taskbar and the Alt+Tab list.
+
+        Removing the OS decorations makes Windows classify the window as a
+        *tool window*, which the shell deliberately hides from the taskbar and
+        from Alt+Tab - so a window nudged behind something else is effectively
+        lost. Clearing ``WS_EX_TOOLWINDOW`` and setting ``WS_EX_APPWINDOW``
+        puts it back in both. The style only takes effect when the window is
+        re-shown, hence the withdraw/deiconify.
+
+        Windows-only, and entirely best-effort: any failure leaves the window
+        exactly as it was. Users who would rather have native chrome can turn
+        off *Dev Mode - Window - Custom title bar* instead.
+        """
+        if not sys.platform.startswith("win"):
+            return
+        if not self.config.get("frameless", True):
+            return          # a decorated window is already in the taskbar
+        want = bool(self.config.get("show_in_taskbar", True))
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            GWL_EXSTYLE = -20
+            WS_EX_TOOLWINDOW = 0x00000080
+            WS_EX_APPWINDOW = 0x00040000
+
+            user32 = ctypes.windll.user32
+            self.root.update_idletasks()
+            # Tk's toplevel is a child of a wrapper window; the wrapper is the
+            # one the shell looks at.
+            hwnd = user32.GetParent(self.root.winfo_id()) or self.root.winfo_id()
+
+            # GetWindowLongPtrW is the 64-bit-correct entry point; the older
+            # name is the only one present on 32-bit builds.
+            getter = getattr(user32, "GetWindowLongPtrW", None) or user32.GetWindowLongW
+            setter = getattr(user32, "SetWindowLongPtrW", None) or user32.SetWindowLongW
+            getter.restype = ctypes.c_ssize_t
+            getter.argtypes = [wintypes.HWND, ctypes.c_int]
+            setter.restype = ctypes.c_ssize_t
+            setter.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+
+            style = getter(hwnd, GWL_EXSTYLE)
+            if want:
+                style = (style & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW
+            else:
+                style = (style & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW
+            setter(hwnd, GWL_EXSTYLE, style)
+
+            # Re-show so the shell re-reads the style, then restore the flags
+            # the withdraw dropped.
+            self.root.withdraw()
+            self.root.after(10, self._reshow_after_style_change)
+        except Exception:
+            pass
+
+    def _reshow_after_style_change(self) -> None:
+        """Bring the window back after a taskbar-style change."""
+        try:
+            self.root.deiconify()
+            self.root.wm_attributes("-topmost", bool(self.config.get("always_on_top", True)))
+            self.root.wm_attributes("-alpha", float(self.config.get("opacity", 0.97)))
         except tk.TclError:
             pass
 
@@ -254,7 +321,10 @@ class App:
             width = int(self.config.get("window.w", 360) or 360)
         chrome = self.chrome_height()
         if self.config.get("compact"):
-            height = COMPACT_BODY_H + chrome
+            # Auto-fit here too: a hard-coded strip height clips the checklist
+            # chips as soon as the font or the display scaling grows.
+            self.root.update_idletasks()
+            height = max(COMPACT_BODY_H, self.view.winfo_reqheight()) + chrome
         else:
             # Grow to fit: a larger text scale or extra checklist items must
             # never push the Complete button off the bottom of the window.

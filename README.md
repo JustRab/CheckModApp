@@ -81,6 +81,7 @@ From the [Releases](../../releases) page:
 |---|---|
 | **`CheckMod-folder.zip`** | **Recommended on a managed work machine.** Unzip anywhere, run the `CheckMod.exe` inside. Extracts nothing at runtime, so it gives heuristic antivirus far less to object to, and starts instantly. |
 | `CheckMod.exe` | You want a single file and your machine is not locked down. |
+| **`CheckMod-<version>-share.zip`** | You need to hand the app to a colleague. Both layouts plus a plain-language README and the IT one-pager, in one file — no repository access needed. See [DISTRIBUTION.md](docs/DISTRIBUTION.md). |
 | `SHA256SUMS.txt` | Your IT team wants to allow-list the exact build. |
 
 Or build it yourself in one command — see [Building the executable](#building-the-executable).
@@ -304,6 +305,7 @@ CheckModApp/
 | **[docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md)** | Every setting, the full `settings.json` reference, theming, and how to roll out a team-wide preset |
 | **[docs/PRIVACY.md](docs/PRIVACY.md)** | The privacy and security statement, written for an IT or security reviewer |
 | **[docs/IT-APPROVAL.md](docs/IT-APPROVAL.md)** | One page to hand to IT: what it touches, why an antivirus warning may appear, and how to verify every claim |
+| **[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)** | Getting the app to colleagues while the repository stays private |
 | **[docs/BUILD.md](docs/BUILD.md)** | Building, CI, code signing, antivirus false positives |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Module map, data flow, and how to extend the app |
 | **[docs/FAQ.md](docs/FAQ.md)** | Common questions and troubleshooting |

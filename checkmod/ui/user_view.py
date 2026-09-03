@@ -170,12 +170,16 @@ class UserView(tk.Frame):
                                  font=fonts["h1"])
         self.big_time.pack(side="left")
         self.btn_toggle = Button(middle, theme, fonts, text=app.t("user.start"),
-                                 command=app.toggle_timer, variant="primary", height=26,
+                                 command=app.toggle_timer, variant="soft", height=26,
                                  radius=6, bg_token="bg", font_key="tiny_bold", width=74)
         self.btn_toggle.pack(side="right")
-        self.btn_complete = Button(middle, theme, fonts, text="OK", command=app.complete_case,
-                                   variant="soft", height=26, radius=6, bg_token="bg",
-                                   font_key="tiny_bold", width=42,
+        # NOT labelled "OK": that reads as "dismiss this view", and clicking it
+        # files the case and clears the timer and checklist. A tick plus the
+        # primary styling makes it read as the terminal action it is.
+        self.btn_complete = Button(middle, theme, fonts, text="\u2713",
+                                   command=app.complete_case, variant="primary",
+                                   height=26, radius=6, bg_token="bg",
+                                   font_key="body_bold", width=42,
                                    tooltip=app.t("user.complete"))
         self.btn_complete.pack(side="right", padx=6)
 
@@ -275,7 +279,10 @@ class UserView(tk.Frame):
         else:
             label = app.t("user.resume")
         self.btn_toggle.set_text(label)
-        self.btn_toggle.set_variant("soft" if running else "primary")
+        if self.compact:
+            self.btn_toggle.set_variant("soft")     # Complete is the only primary
+        else:
+            self.btn_toggle.set_variant("soft" if running else "primary")
         self.btn_toggle.set_enabled(session.case_id is not None)
 
         require_all = bool(app.config.get("require_all_checks"))

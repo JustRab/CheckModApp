@@ -67,6 +67,9 @@ add a theme, that test will hold you to the same bar.
 | **Remember position** | Restores the last position and size at launch. |
 | **Centre window** | Recovery button for a window that ended up off-screen after a monitor change. |
 | **Compact mode** | The collapsed single-strip layout. Also `Ctrl+M` or a double-click on the title bar. |
+| **Show in the taskbar and Alt+Tab** | On. A borderless window is a *tool window* to Windows and is hidden from both by default; this forces it back so the window cannot get lost. |
+| **Desktop shortcut** | Creates/removes a shortcut in your own Desktop folder. |
+| **Start when I sign in** | Creates/removes an entry in your per-user Start-up folder. No registry key, no service, no admin rights. |
 
 > **Why is there no minimise button?** A window without OS decorations has no
 > taskbar entry to minimise into. That is the trade-off for the compact,
@@ -230,6 +233,7 @@ Full file, with the factory values:
   // ---- window ----
   "always_on_top": true,
   "frameless": true,                // false = native OS title bar
+  "show_in_taskbar": true,          // force taskbar/Alt+Tab presence
   "snap_to_edges": true,
   "snap_threshold": 18,             // 0 .. 60 px
   "remember_position": true,
@@ -239,7 +243,7 @@ Full file, with the factory values:
   "auto_start_on_select": true,
   "warn_at_pct": 80,                // 10 .. 100
   "alert_on_over": true,
-  "sound_enabled": false,
+  "sound_enabled": true,
   "confirm_reset": true,
   "require_all_checks": false,
   "count_paused_time": false,
