@@ -213,3 +213,47 @@ def test_subscribers_are_notified_and_a_broken_one_cannot_break_the_app(tmp_path
     config.subscribe(seen.append)
     config.set("theme", "nord")
     assert seen == ["theme"]
+
+
+# ----------------------------------------------------------------------
+# The shipped team AHT sheet
+# ----------------------------------------------------------------------
+def test_the_team_sheet_ships_as_the_default_link(tmp_path):
+    """A new install can press Sync without being set up first."""
+    from checkmod.config import TEAM_AHT_SHEET_URL
+
+    config = make_config(tmp_path)
+    assert config.get("aht_sheet_url") == TEAM_AHT_SHEET_URL
+    assert TEAM_AHT_SHEET_URL.startswith("https://docs.google.com/spreadsheets/d/")
+
+
+def test_the_shipped_link_is_one_the_sync_can_actually_read(tmp_path):
+    """A default the parser rejects would be worse than no default."""
+    from checkmod import sheets
+
+    url = make_config(tmp_path).get("aht_sheet_url")
+    assert sheets.csv_url(url), "the shipped link is not a readable sheet URL"
+    assert sheets.host_allowed(url)
+
+
+def test_upgrading_fills_in_the_team_sheet_once(tmp_path):
+    """A pre-release build stored an empty URL, which would win on merge."""
+    from checkmod.config import TEAM_AHT_SHEET_URL
+
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"schema": 3, "aht_sheet_url": ""}), encoding="utf-8")
+    assert Config(path=path).get("aht_sheet_url") == TEAM_AHT_SHEET_URL
+
+
+def test_upgrading_never_overwrites_a_sheet_link_somebody_set(tmp_path):
+    other = "https://docs.google.com/spreadsheets/d/SOMEONE_ELSES/edit"
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"schema": 3, "aht_sheet_url": other}), encoding="utf-8")
+    assert Config(path=path).get("aht_sheet_url") == other
+
+
+def test_clearing_the_link_stays_cleared(tmp_path):
+    """Clearing the field is how the feature is switched off; it must stick."""
+    config = make_config(tmp_path)
+    config.set("aht_sheet_url", "")
+    assert make_config(tmp_path).get("aht_sheet_url") == ""

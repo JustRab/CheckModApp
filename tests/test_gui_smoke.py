@@ -968,6 +968,7 @@ def test_cancelling_the_period_dialog_writes_nothing(app, monkeypatch):
 
 def test_typing_a_sheet_link_enables_sync_without_destroying_the_field(app):
     """The commit also runs on FocusOut, so the rebuild has to be deferred."""
+    app.config.set("aht_sheet_url", "")      # a team that cleared the default
     app.config.set("mode", "dev")
     app._restyle_now()
     app.view.show("data")
@@ -996,3 +997,34 @@ def test_clearing_the_sheet_link_disables_sync_again(app):
     app.root.update_idletasks()
     app.root.update()
     assert app.view._sheet_button.enabled is False
+
+
+def test_sync_is_ready_to_press_on_a_fresh_install(app):
+    """The team's sheet ships as the default, so there is nothing to set up."""
+    from checkmod.config import TEAM_AHT_SHEET_URL
+
+    assert app.config.get("aht_sheet_url") == TEAM_AHT_SHEET_URL
+    app.config.set("mode", "dev")
+    app._restyle_now()
+    app.view.show("data")
+    app.root.update()
+    assert app.view._sheet_button.enabled is True
+
+
+def test_a_fresh_install_still_makes_no_request_until_sync_is_pressed(app, monkeypatch):
+    """Shipping a link must not mean the app reaches out on its own."""
+    from checkmod import sheets
+
+    calls = []
+    monkeypatch.setattr(sheets, "fetch",
+                        lambda url: calls.append(url) or (False, "", "offline"))
+    for _ in range(12):
+        app._tick()                     # the loop that drives everything else
+        app.root.update()
+    app.select_case("voice")
+    app.complete_case()
+    app.start_no_content()
+    app.end_no_content()
+    app._restyle_now()
+    app.root.update()
+    assert calls == [], "something fetched the sheet without being asked"

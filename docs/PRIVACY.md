@@ -14,7 +14,7 @@ one names the file to check.
 
 | Question | Answer |
 |---|---|
-| Does it connect to the internet? | **Only if you ask it to, and only to one place.** With no AHT sheet configured — the shipped default — nothing on the network is touched. Configure a Google Sheets link and the Sync button performs one HTTPS `GET` of that sheet. See section 1. |
+| Does it connect to the internet? | **Only when somebody presses Sync, and only to one place.** That button performs one HTTPS `GET` of the team's AHT targets sheet on `docs.google.com`. It ships with that sheet's link already filled in, so the button works with no setup; clearing the field switches the feature off. Nothing else in the app touches a network, and until the button is pressed no request is made and no networking module is imported. See section 1. |
 | Does anything leave the machine? | **No.** There is no upload path anywhere in the code: no `POST`, no file upload, no request body. Settings, history and case data never leave the computer. |
 | Does it send telemetry, analytics or crash reports? | **No.** None exists. |
 | Does it auto-update? | **No.** The binary never changes itself. |
@@ -28,22 +28,32 @@ one names the file to check.
 
 ---
 
-## 1. Network access: one optional, user-initiated read
+## 1. Network access: one user-initiated read
 
 CheckMod has exactly one feature that uses a network, and it is off until
 somebody configures it.
 
 **What it is.** Weekly AHT targets are published by a team lead in a Google
-Sheet. Rather than retyping them, a moderator can paste that sheet's link into
-*Dev Mode → Data → AHT sheet* and press **Sync targets from the sheet**.
+Sheet. Rather than retyping them, a moderator presses **Sync targets from the
+sheet** in *Dev Mode → Data → AHT sheet* and the app reads them.
+
+**It ships with a link already in it.** `checkmod/config.py` sets
+`aht_sheet_url` to this team's published targets sheet, so a new install needs
+no setup. That is a deliberate deployment choice, not a hidden one: the link is
+one named constant (`TEAM_AHT_SHEET_URL`) in a settings file you can read, it
+is a document shared for viewing by anyone with the link, and it is visible in
+the built executable as a plain string. A different team changes that line, or
+clears the field in Dev Mode. **What it is not** is a request nobody asked for:
+having a link configured does not make the app fetch anything — only the button
+does.
 
 **What it does, precisely** — all of this is in `checkmod/sheets.py`, which is
 under 300 lines and is the only module involved:
 
 | Property | Guarantee | Where |
 |---|---|---|
-| Off by default | Shipped with `aht_sheet_url` empty. With no link configured, the networking module is never even imported — the `import urllib.request` lives *inside* the fetch function. | `checkmod/config.py`, `sheets.fetch` |
-| User-initiated | No polling, no timer, no background thread waiting to fire. One button press, one request. | `App.sync_aht_from_sheet` |
+| Nothing happens until the button is pressed | No polling, no timer, no background thread waiting to fire, nothing on start-up. One button press, one request. `import urllib.request` lives *inside* the fetch function, so an install where nobody ever presses Sync never loads a networking module at all. | `App.sync_aht_from_sheet`, `sheets.fetch` |
+| Switchable off, in one field | The link is a setting, not a constant. Clearing *Dev Mode → Data → Sheet link* disables the feature, and the Sync button greys out. A deployment can be verified from `settings.json`: an empty `aht_sheet_url` means the feature is inert. | `checkmod/config.py` |
 | Read-only | One HTTPS `GET`. No request body, no `POST`, no upload of any kind. | `sheets.fetch` |
 | Nothing identifying is sent | No cookies, no credentials, no `Authorization` header, no machine or user name. The only header is `User-Agent: CheckMod`. | `sheets.fetch`, `tests/test_sheets.py` |
 | Google only | The link must be an HTTPS `docs.google.com` spreadsheet URL, and a redirect is followed only to Google's own file host. A configured URL cannot be turned into a request anywhere else. | `sheets.ALLOWED_HOSTS`, `sheets.csv_url` |
@@ -74,10 +84,12 @@ cannot send mail, serve anything, or speak any protocol other than the HTTPS
 `GET` above. `urllib.request` and `ssl` ship from 1.4.0 onward because the
 sheet sync needs them; before 1.4.0 no networking module was packaged at all.
 
-**If your policy does not allow it.** Leave the sheet link empty and the
-feature never runs. Nothing else in the app depends on it: targets can be
-typed in Dev Mode exactly as before. A deployment can also be verified from
-the settings file — `aht_sheet_url` empty means the feature is inert.
+**If your policy does not allow it.** Clear the sheet link in *Dev Mode → Data*
+and the feature never runs; the Sync button greys out. Nothing else in the app
+depends on it — targets are typed in Dev Mode exactly as before. For a fleet,
+`TEAM_AHT_SHEET_URL` in `checkmod/config.py` can be set to `""` at build time,
+or an exported settings file with the field empty can be imported on each
+machine. Either way `aht_sheet_url` in `settings.json` is the thing to audit.
 
 ---
 

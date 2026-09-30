@@ -89,9 +89,20 @@ Nothing in this repository contains credentials, internal hostnames, policy
 text or case data — the app records no personal data (see
 [PRIVACY.md](PRIVACY.md)). The data-leak risk of publishing would come from
 anything *you* add later: real case examples in the checklist hints, internal
-queue names in the case types, an exported `history.jsonl`, or **the link to
-your team's AHT sheet** — `aht_sheet_url` lives in `settings.json`, so never
-commit that file or paste its contents into an issue. Note
+queue names in the case types, or an exported `history.jsonl` — `.gitignore`
+already covers the last one.
+
+One thing is already in here by choice: **the team's AHT sheet link**, as
+`TEAM_AHT_SHEET_URL` in `checkmod/config.py`, so a new install needs no setup.
+It is worth exactly what the sheet behind it is worth. That sheet has to be
+shared as "anyone with the link can view" for the app to read it at all, so
+the link *is* the access control — publishing this repository, or handing out
+the executable (the string is visible in it), hands over read access to this
+week's AHT targets. Nothing else: the sheet is read-only to the app, and
+CheckMod cannot write to it. If those targets are not something to share
+outside the team, set that constant to `""` and distribute the link with an
+exported settings file instead (*Dev Mode → Data → Export settings*), which
+keeps it out of the repository and out of the binary. Note
 that `.gitignore` already excludes `settings.json`, `history.jsonl` and the
 `CheckModData/` folder, so local data cannot be committed by accident.
 

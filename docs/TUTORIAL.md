@@ -109,9 +109,13 @@ A bare number is read as **minutes**, because that is how AHT is discussed.
 Targets move every week, and retyping four of them by hand is how they end up
 wrong. If your team lead keeps them in a Google Sheet, CheckMod can read it.
 
-**One-time setup**
+**Already set up.** This build ships pointing at the team's targets sheet, so
+there is nothing to configure — the link is in *Dev Mode → Data → AHT sheet*
+and the Sync button works straight away.
 
-1. Give your team lead
+**Setting it up for another team**
+
+1. Give whoever publishes the targets
    **[CheckMod-AHT-targets-template.xlsx](CheckMod-AHT-targets-template.xlsx)** —
    upload it to Google Drive (it opens as a Google Sheet) and it is already in
    the shape CheckMod reads, with a "How to use" tab written for them.
@@ -119,7 +123,9 @@ wrong. If your team lead keeps them in a Google Sheet, CheckMod can read it.
 3. Copy the link from the browser's address bar.
 4. Paste it into *Dev Mode → Data → AHT sheet → Sheet link*, press Enter.
 
-**Every week after that**, press **Sync targets from the sheet**. CheckMod
+Clearing that field switches the feature off altogether.
+
+**Every week**, press **Sync targets from the sheet**. CheckMod
 reads the sheet, then shows you what it found next to what you have:
 
 ```
@@ -166,7 +172,7 @@ is never read as a package.
 press the button. Nothing about you, your machine or your cases is sent
 anywhere — there is no upload path in the app at all. If your sheet link is
 empty, the feature never runs. Full detail in
-**[PRIVACY.md](PRIVACY.md#1-network-access-one-optional-user-initiated-read)**.
+**[PRIVACY.md](PRIVACY.md#1-network-access-one-user-initiated-read)**.
 
 ---
 

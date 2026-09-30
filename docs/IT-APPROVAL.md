@@ -24,7 +24,7 @@ Source: <https://github.com/JustRab/CheckModApp>
 | Administrator rights? | **Never** — not to install, run, update or build. |
 | Registry changes? | **None.** |
 | Services, drivers, scheduled tasks, start-up entries? | **None.** |
-| Network connections? | **One, optional, off by default.** If a moderator configures a Google Sheets link for the team's AHT targets, the Sync button performs a single HTTPS `GET` of that sheet. With no link configured — the shipped default — the app makes no network request at all, and the networking module is never imported. Nothing is ever uploaded. Details: [PRIVACY.md §1](PRIVACY.md). |
+| Network connections? | **One, and only when a person presses a button.** The *Sync targets from the sheet* button performs a single HTTPS `GET` of the team's AHT targets sheet on `docs.google.com` — a document shared for viewing. The link ships pre-filled so the button needs no setup, and clearing that one field switches the feature off. There is no polling, nothing on start-up, and until the button is pressed no request is made and no networking module is loaded. Nothing is ever uploaded: there is no `POST` and no request body anywhere in the code. Details and how to verify each claim: [PRIVACY.md §1](PRIVACY.md). |
 | Telemetry / analytics / crash reporting? | **None.** No code path sends anything about the machine, the user or their work anywhere. |
 | Auto-update? | **None.** The binary never modifies itself. |
 | Keyboard hooks or screen capture? | **None.** Shortcuts bind to its own window only. |

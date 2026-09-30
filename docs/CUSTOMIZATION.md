@@ -204,7 +204,7 @@ the adaptive one in force at the time, so past cases stay interpretable.
 | **Storage path** | Shown on screen. **Open data folder** reveals it in the file manager. |
 | **Portable mode** | Stores settings and history in `CheckModData\` next to the executable instead of your user profile. Existing files are not moved automatically — you keep both copies and decide. |
 | **Export history (CSV)** | Spreadsheet-friendly export using your own checklist labels as column headers. Asks for the period first: a preset (today, this/last week, last 7 or 30 days, this/last month, everything) or an exact `YYYY-MM-DD` from/to range. Both typed dates are inclusive, and the bound is exclusive internally so two adjacent ranges cannot double-count a case. |
-| **AHT sheet** | Optional. Paste a Google Sheets link and **Sync targets from the sheet** reads this week's AHT from it, previews the changes, and applies only what you accept. [CheckMod-AHT-targets-template.xlsx](CheckMod-AHT-targets-template.xlsx) is a ready-made sheet to hand to whoever publishes the targets — upload it to Google Drive and share it for viewing. Regenerate it with `python tools/make_aht_sheet.py`. One read-only HTTPS request, started by the button, and the only network access in the app — see [PRIVACY.md](PRIVACY.md). Leave the link empty and the feature never runs. |
+| **AHT sheet** | Ships pointing at the team's sheet, so **Sync targets from the sheet** works with no setup; paste a different link for another team, or clear the field to switch the feature off. Sync reads this week's AHT from that sheet, previews the changes, and applies only what you accept. [CheckMod-AHT-targets-template.xlsx](CheckMod-AHT-targets-template.xlsx) is a ready-made sheet to hand to whoever publishes the targets — upload it to Google Drive and share it for viewing. Regenerate it with `python tools/make_aht_sheet.py`. One read-only HTTPS request, started by the button, and the only network access in the app — see [PRIVACY.md](PRIVACY.md). Leave the link empty and the feature never runs. |
 | **Export / Import settings** | Share a configuration as a JSON file. |
 | **Restore factory settings** | Resets every preference; history is untouched. |
 | **Erase all data** | Deletes the history **and** resets settings. |
@@ -293,7 +293,9 @@ Full file, with the factory values:
   // ---- data ----
   "history_enabled": true,
   "history_retention_days": 30,     // 0 = unlimited
-  "aht_sheet_url": "",              // "" = the sheet sync never runs
+  // Ships pointing at the team's targets sheet (config.TEAM_AHT_SHEET_URL).
+  // "" = the sheet sync never runs and the Sync button is disabled.
+  "aht_sheet_url": "https://docs.google.com/spreadsheets/d/.../edit",
   "aht_sheet_last_sync": 0,         // epoch seconds, written by a sync
 
   // ---- domain ----

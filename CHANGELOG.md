@@ -41,6 +41,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
   `15:00`, `15`, `15 min` and `900s` are all understood, and cells that are
   blank or `TBC` are skipped. The fetch runs on a worker thread, so a slow
   sheet never freezes the window.
+- **The team's AHT sheet ships as the default link**, as
+  `config.TEAM_AHT_SHEET_URL`, so a new install can press Sync with no setup.
+  A configured link still does not make the app fetch anything on its own -
+  there is no polling and nothing on start-up, and `urllib` is not imported
+  until the button is pressed - and clearing the field in Dev Mode switches
+  the feature off. It is a deployment choice with a cost, so it is documented
+  as one rather than buried: the sheet must be shared as "anyone with the link
+  can view", which makes the link itself the access control, and it is visible
+  both in this repository and as a string in the built executable.
+  `docs/DISTRIBUTION.md` says what that means and how to ship without it.
+  The claims in `PRIVACY.md`, `IT-APPROVAL.md`, `README.md` and `FAQ.md` that
+  described the feature as "off by default" were rewritten - it is now
+  "nothing happens until the button is pressed", which is the guarantee that
+  still holds.
 - **A sheet template to hand to whoever publishes the targets**:
   `docs/CheckMod-AHT-targets-template.xlsx`. Upload it to Google Drive, share
   it for viewing, paste the link into Dev Mode. It arrives in the shape the

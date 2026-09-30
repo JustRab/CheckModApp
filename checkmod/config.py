@@ -19,7 +19,7 @@ from . import paths
 
 #: Bumped whenever :data:`DEFAULTS` changes shape in a way that needs a
 #: migration step in :func:`migrate`.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 #: AHT target used for a newly created case type, and as the fallback when a
@@ -41,6 +41,18 @@ def _check(cid: str, label: str, hint: str, applies_to=None) -> Dict[str, Any]:
     """
     return {"id": cid, "label": label, "hint": hint, "enabled": True,
             "applies_to": list(applies_to or [])}
+
+
+#: The team's published AHT targets sheet, used as the shipped default for
+#: :data:`DEFAULTS`. It is read-only, read only when somebody presses Sync,
+#: and a deployment for a different team changes this one line (or clears the
+#: field in Dev Mode, which switches the feature off). The sheet has to be
+#: shared as "anyone with the link can view", which also means this link is
+#: worth no more than the targets it holds - see docs/DISTRIBUTION.md.
+TEAM_AHT_SHEET_URL = (
+    "https://docs.google.com/spreadsheets/d/"
+    "18mXlpIGYrH8wEFNtJqynbVDTLX_wTYA6Y7ulrw9F684/edit"
+)
 
 
 #: Every setting the app understands, with the value used on first run.
@@ -111,10 +123,14 @@ DEFAULTS: Dict[str, Any] = {
     "history_retention_days": 30,
     # ----- Team AHT sheet ---------------------------------------------------
     # The ONLY outbound request this app can make, and only when the user
-    # presses the button: a GET of a Google Sheet published to the web, to read
-    # the week's AHT targets. Empty URL = the networking code is never even
-    # imported. Nothing is ever uploaded. See docs/PRIVACY.md.
-    "aht_sheet_url": "",
+    # presses Sync: a GET of a Google Sheet shared for viewing, to read the
+    # week's AHT targets. Nothing is ever uploaded, and until somebody presses
+    # that button the networking module is not even imported.
+    #
+    # Shipped pointing at this team's sheet so a new install needs no setup.
+    # Another team replaces it in Dev Mode > Data, and clearing the field turns
+    # the feature off entirely. See docs/PRIVACY.md.
+    "aht_sheet_url": TEAM_AHT_SHEET_URL,
     "aht_sheet_last_sync": 0,       # epoch of the last successful fetch
     # ----- Domain data -----------------------------------------------------
     "case_types": [
@@ -216,6 +232,14 @@ def migrate(data: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(cases, list) else []
         if usable and not any(c.get("id") == "social" for c in usable):
             cases.append(_case("social", "Social Overlay", 600, "#4CC2FF"))
+
+    if schema < 4:
+        # A build from before the team sheet was shipped saved an empty URL,
+        # and a stored value wins over the default on merge - so it is filled
+        # in once here. A user who cleared the field deliberately and wants it
+        # to stay clear can clear it again; this runs only on the upgrade.
+        if not str(data.get("aht_sheet_url") or "").strip():
+            data["aht_sheet_url"] = TEAM_AHT_SHEET_URL
 
     data["schema"] = max(schema, SCHEMA_VERSION)
     return data

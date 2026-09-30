@@ -148,9 +148,11 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "dev.no_content_warn": "Calm nudge at",
         # --- AHT sheet ----------------------------------------------------
         "dev.sheet": "AHT sheet",
-        "dev.sheet_hint": ("Paste the link to the team's targets sheet, then press "
-                           "Sync to read this week's AHT from it. The sheet must be "
-                           "shared as 'anyone with the link can view'."),
+        "dev.sheet_hint": ("Press Sync to read this week's AHT from the team's "
+                           "targets sheet. The link below is already set; replace "
+                           "it to use a different sheet, or clear it to switch "
+                           "this off. A sheet must be shared as 'anyone with the "
+                           "link can view' to be readable."),
         "dev.sheet_url": "Sheet link",
         "dev.sheet_sync": "Sync targets from the sheet",
         "dev.sheet_syncing": "Reading the sheet...",

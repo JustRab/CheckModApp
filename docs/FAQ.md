@@ -102,12 +102,15 @@ the record schema has no field for anything that identifies a person or a
 case.
 
 **Does it use the internet?**
-Only if you point it at an AHT sheet, and only then. With the sheet link empty
-— how it ships — CheckMod makes no network request at all and never imports a
-networking module. Configure the link and the **Sync** button performs one
-read-only HTTPS `GET` of that Google Sheet. There is no upload path anywhere
-in the code, so nothing about you or your cases can leave the machine.
-[PRIVACY.md §1](PRIVACY.md#1-network-access-one-optional-user-initiated-read)
+Only when you press **Sync targets from the sheet**, and only to read the
+team's AHT sheet. That is one read-only HTTPS `GET` of a Google Sheet shared
+for viewing. The link ships already filled in, so the button works without any
+setup — but a configured link does not make the app fetch anything on its own:
+there is no polling and nothing on start-up, and the networking module is not
+imported until the button is pressed. Clearing the link in *Dev Mode → Data*
+switches the feature off. There is no upload path anywhere in the code, so
+nothing about you or your cases can leave the machine.
+[PRIVACY.md §1](PRIVACY.md#1-network-access-one-user-initiated-read)
 has the full list of guarantees and how to verify each one.
 
 **The sheet sync says the sheet is not shared. Why?**

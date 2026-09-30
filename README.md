@@ -192,13 +192,14 @@ in the bottom-right corner resizes the window.
 CheckMod was written for a corporate environment, so the privacy properties
 are structural rather than promised:
 
-- **One optional network request, and nothing else.** With no AHT sheet
-  configured — the shipped default — CheckMod makes no network request at all,
-  and never even imports a networking module. Configure a Google Sheets link
-  and the Sync button performs a single HTTPS `GET` of that sheet: read-only,
-  started by you, restricted to Google's own hosts, with no cookies or
-  identifiers attached. **Nothing is ever uploaded** — there is no `POST` and
-  no request body anywhere in the code.
+- **One network request, and only when you press a button.** The *Sync targets
+  from the sheet* button performs a single HTTPS `GET` of the team's AHT sheet:
+  read-only, restricted to Google's own hosts, with no cookies or identifiers
+  attached. The link ships pre-filled so the button works out of the box, and
+  clearing that field switches the feature off. Nothing else in the app touches
+  a network — no polling, nothing on start-up, and the networking module is not
+  even imported until the button is pressed. **Nothing is ever uploaded**:
+  there is no `POST` and no request body anywhere in the code.
 - **No telemetry, no analytics, no crash reporting, no auto-update.**
 - **No personal data.** A completed-case record contains the case *type*, the
   duration, the target and which adherence items were cleared. There is no
