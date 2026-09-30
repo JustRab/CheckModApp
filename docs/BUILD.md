@@ -115,7 +115,8 @@ The executable appears on the Releases page a few minutes later.
 | one-folder build for releases | It never extracts itself to `%TEMP%`, which is what a locked-down machine needs; the one-file spec stays available for local builds |
 | `console=False` | No terminal window flashing behind the floating UI |
 | `upx=False` | UPX packing is the single biggest cause of antivirus false positives on PyInstaller output. A few megabytes are not worth the support tickets. |
-| `excludes=[...]` | Drops standard-library modules the app never imports — including `socket`, `ssl`, `http` and `urllib.request`. This halves the binary and makes "it cannot reach the network" a structural fact rather than a promise. |
+| `excludes=[...]` | Drops standard-library modules the app never imports — mail, FTP, XML-RPC, every server module, `asyncio`, `xml`. This halves the binary and bounds what the executable is *able* to do, which a reviewer can confirm from the bundle. `urllib.request` and `ssl` are packaged from 1.4.0 onward: the optional AHT sheet sync needs one HTTPS `GET`. Everything else stays out. |
+| `hiddenimports=[...]` | Names `urllib.request`, `urllib.error`, `http.client` and `ssl` explicitly. `checkmod/sheets.py` imports them *inside* its fetch function, so an install that never uses a sheet never loads networking code — and a lazy import is easy for a future PyInstaller to miss. |
 | `version_info.txt` | Fills in the Windows *Properties → Details* tab. IT looks there first when an unsigned binary shows up on a workstation. |
 | generated icon | `tools/make_icon.py` builds the `.ico` from code, so the mark can be recoloured without an image editor |
 

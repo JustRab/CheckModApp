@@ -327,3 +327,134 @@ class Session:
     def missing_checks(self, items: List[Dict]) -> List[str]:
         """Labels of the checklist items still unticked (for the UI hint)."""
         return [item["label"] for item in items if not self.checks.get(item["id"], False)]
+
+class NoContentCycle:
+    """The No Content wait: a fixed countdown that must be answered.
+
+    Some queues hand a moderator nothing to look at. The team's rule is to
+    wait a set span - three minutes by default - and then say explicitly
+    whether content arrived:
+
+    * **No Content** starts (or restarts) the countdown and counts a cycle;
+    * **Content** ends it, and the app goes back to timing a case.
+
+    Two alerts mark the span: a calm nudge partway through
+    (``warn_s``, two minutes by default) and a louder one when it runs out.
+    The louder one repeats every :data:`REPEAT_SECONDS` while the countdown
+    sits unanswered, because the point of the state is that an answer is
+    owed - a single alert that the moderator stepped away for is the exact
+    case this is meant to catch.
+
+    Headless and clock-injectable like :class:`Session`, and on the same
+    suspend-aware clock, so a locked machine does not pause the wait.
+    """
+
+    #: How often the over-time alert repeats while nobody has answered.
+    REPEAT_SECONDS = 30.0
+
+    def __init__(self, clock: Optional[Callable[[], float]] = None,
+                 duration_s: int = 180, warn_s: int = 120) -> None:
+        self._clock = clock or suspend_aware_clock()
+        self.duration_s = max(1, int(duration_s))
+        self.warn_s = max(0, int(warn_s))
+        self.active = False
+        self.cycles = 0                 # No Content presses in this run
+        self.warn_fired = False
+        self._started_at: Optional[float] = None
+        self._next_over = float(self.duration_s)
+        self.run_started_wall: Optional[float] = None
+
+    # ------------------------------------------------------------------
+    # Configuration
+    # ------------------------------------------------------------------
+    def configure(self, duration_s: int, warn_s: int) -> None:
+        """Apply new lengths from settings, keeping any run in progress.
+
+        The warning is clamped below the deadline: a nudge at or after the
+        moment the loud alert is due would only ever be drowned by it.
+        """
+        self.duration_s = max(1, int(duration_s))
+        self.warn_s = max(0, min(int(warn_s), self.duration_s - 1))
+        if self.active:
+            self._next_over = max(self._next_over, float(self.duration_s))
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+    def start(self) -> None:
+        """Begin a countdown, or restart it for another No Content."""
+        if not self.active:
+            self.cycles = 0
+            self.run_started_wall = time.time()
+        self.active = True
+        self.cycles += 1
+        self.warn_fired = False
+        self._started_at = self._clock()
+        self._next_over = float(self.duration_s)
+
+    def stop(self) -> None:
+        """Content arrived: leave the wait entirely."""
+        self.active = False
+        self._started_at = None
+        self.warn_fired = False
+        self._next_over = float(self.duration_s)
+
+    def reset(self) -> None:
+        """Stop and forget the cycle count as well."""
+        self.stop()
+        self.cycles = 0
+        self.run_started_wall = None
+
+    # ------------------------------------------------------------------
+    # Derived values
+    # ------------------------------------------------------------------
+    @property
+    def elapsed(self) -> float:
+        """Seconds since this cycle started (0 when not running)."""
+        if not self.active or self._started_at is None:
+            return 0.0
+        return max(0.0, self._clock() - self._started_at)
+
+    @property
+    def remaining(self) -> float:
+        """Seconds left in this cycle; negative once it has run out."""
+        return self.duration_s - self.elapsed
+
+    @property
+    def progress(self) -> float:
+        """Elapsed / duration, unclamped."""
+        if self.duration_s <= 0:
+            return 0.0
+        return self.elapsed / float(self.duration_s)
+
+    def status(self) -> str:
+        """:data:`OK` before the nudge, :data:`WARN` after, :data:`OVER` at time."""
+        if not self.active:
+            return OK
+        elapsed = self.elapsed
+        if elapsed >= self.duration_s:
+            return OVER
+        if self.warn_s and elapsed >= self.warn_s:
+            return WARN
+        return OK
+
+    def due_alert(self) -> Optional[str]:
+        """The alert role owed right now, or ``None``.
+
+        Latching lives here rather than in the UI so the tick handler can
+        simply play whatever this returns. Returns ``"nudge"`` once when the
+        calm point is passed, then ``"over"`` at the deadline and again every
+        :data:`REPEAT_SECONDS` until answered.
+        """
+        if not self.active:
+            return None
+        elapsed = self.elapsed
+        if elapsed >= self.duration_s:
+            if elapsed >= self._next_over:
+                self._next_over = elapsed + self.REPEAT_SECONDS
+                return "over"
+            return None
+        if self.warn_s and elapsed >= self.warn_s and not self.warn_fired:
+            self.warn_fired = True
+            return "nudge"
+        return None

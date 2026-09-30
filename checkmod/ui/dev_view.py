@@ -26,8 +26,8 @@ import time
 import tkinter as tk
 from typing import Callable, Dict, Optional
 
-from .. import (__author__, __version__, alerts, paths, shortcuts,
-                theme as theme_mod)
+from .. import (__author__, __version__, alerts, history as history_mod,
+                paths, shortcuts, theme as theme_mod)
 from ..config import DEFAULT_TARGET_S, new_id
 from ..session import format_duration, parse_duration
 from . import dialogs
@@ -474,10 +474,57 @@ class DevView(tk.Frame):
         self._action(card, app.t("dev.test_over"),
                      lambda: app.play_alert("over", force=True), "outline")
         if not alerts.available():
+            # Belongs with the alert controls, not three cards further down.
             tk.Label(card, text=app.t("dev.no_audio"), bg=theme["surface"],
                      fg=theme["text_faint"], font=fonts["tiny"], anchor="w",
                      justify="left", wraplength=290).pack(fill="x", padx=12,
                                                           pady=(4, 10))
+
+        # --- alert style ---------------------------------------------
+        self._heading(parent, app.t("dev.alert_style"), app.t("dev.alert_style_hint"))
+        card = self._card(parent)
+        current = str(app.config.get("alert_style", "default"))
+        styles = tk.Frame(card, bg=theme["surface"])
+        styles.pack(fill="x", padx=10, pady=(10, 4))
+        for index, key in enumerate(("default", "calm", "custom")):
+            Button(styles, theme, fonts, text=app.t(f"dev.style_{key}"),
+                   command=lambda k=key: self._set_alert_style(k),
+                   variant="primary" if key == current else "soft", height=28,
+                   radius=7, bg_token="surface", font_key="tiny", width=10).grid(
+                row=0, column=index, sticky="ew", padx=3)
+        for column in range(3):
+            styles.grid_columnconfigure(column, weight=1, uniform="style")
+        # Each style is auditioned in its own right: "calmer" only means
+        # something next to the default, heard back to back.
+        row = self._row(card, app.t("dev.style_try"))
+        for key in ("default", "calm"):
+            Button(row, theme, fonts, text=app.t(f"dev.style_{key}"),
+                   command=lambda k=key: app.play_alert("over", force=True, style=k),
+                   variant="ghost", height=24, radius=6, bg_token="surface",
+                   width=62, font_key="tiny").pack(side="right", padx=(4, 0))
+        self._action(card, app.t("dev.pick_sound"), self._pick_custom_alert, "outline",
+                     app.t("dev.pick_sound_hint"))
+        custom = app.custom_alert_path()
+        if custom is not None:
+            row = self._row(card, app.t("dev.custom_sound"), str(custom))
+            Button(row, theme, fonts, text=app.t("dev.style_try"),
+                   command=lambda: app.play_alert("over", force=True, style="custom"),
+                   variant="ghost", height=24, radius=6, bg_token="surface",
+                   width=62, font_key="tiny").pack(side="right")
+
+        # --- no content ----------------------------------------------
+        self._heading(parent, app.t("dev.no_content"), app.t("dev.no_content_hint"))
+        card = self._card(parent)
+        self._switch_row(card, app.t("dev.no_content_show"), "no_content_enabled")
+        self._slider_row(card, app.t("dev.no_content_len"), "no_content_seconds",
+                         30, 900, 15, lambda v: format_duration(v),
+                         on_change=lambda _v: self._sync_no_content())
+        self._slider_row(card, app.t("dev.no_content_warn"), "no_content_warn_seconds",
+                         0, 900, 15,
+                         lambda v: (app.t("misc.none") if v <= 0 else format_duration(v)),
+                         on_change=lambda _v: self._sync_no_content())
+        self._action(card, app.t("dev.style_try") + " \u00b7 " + app.t("dev.nudge"),
+                     lambda: app.play_alert("nudge", force=True), "outline")
 
         self._heading(parent, app.t("dev.adaptive"),
                       "The timer target tracks this week's average for the case "
@@ -525,9 +572,12 @@ class DevView(tk.Frame):
                on_change=self._toggle_portable, bg_token="surface").pack(side="right")
         self._action(card, app.t("dev.undo_last"), app.undo_last_case, "outline")
         self._action(card, app.t("dev.open_folder"), self._open_folder, "outline")
-        self._action(card, app.t("dev.export_csv"), self._export_csv, "outline")
+        self._action(card, app.t("dev.export_csv"), self._export_csv, "outline",
+                     app.t("dev.export_csv_hint"))
         self._action(card, app.t("dev.export_settings"), self._export_settings, "outline")
         self._action(card, app.t("dev.import_settings"), self._import_settings, "outline")
+
+        self._sheet_card(parent)
 
         self._heading(parent, app.t("dev.wipe"))
         card = self._card(parent)
@@ -937,14 +987,136 @@ class DevView(tk.Frame):
             return str(paths.data_dir() / default_name)
 
     def _export_csv(self) -> None:
-        default = f"checkmod-history-{time.strftime('%Y%m%d')}.csv"
-        target = self._ask_save_path(default, ".csv")
+        """Export the log for a chosen period.
+
+        The range is asked for first, because it also names the file: a folder
+        of ``checkmod-history-20260921_20260927.csv`` is self-describing, where
+        four exports all called ``history`` are not.
+        """
+        app = self.app
+        choice = dialogs.export_range(app)
+        if choice is None:
+            return
+        since, until, label = choice
+        stamp = "_".join(part for part in (
+            history_mod.format_day(since).replace("-", ""),
+            history_mod.format_day(until - 1).replace("-", "") if until else "",
+        ) if part) or time.strftime("%Y%m%d")
+        target = self._ask_save_path(f"checkmod-history-{stamp}.csv", ".csv")
         if not target:
             return
-        labels = {item["id"]: item["label"] for item in self.app.config.get("checklist", [])}
-        ok = self.app.history.export_csv(target, labels)
-        dialogs.alert(self.app, self.app.t("dlg.saved", path=target) if ok
-                      else self.app.t("dlg.failed"))
+        labels = {item["id"]: item["label"] for item in app.config.get("checklist", [])}
+        ok = app.history.export_csv(target, labels, since=since, until=until)
+        if not ok:
+            dialogs.alert(app, app.t("dlg.failed"))
+            return
+        rows = len([r for r in app.history.load(since_ts=since)
+                    if until is None or r.get("ts", 0) < until])
+        dialogs.alert(app, f"{app.t('dlg.saved', path=target)}\n\n"
+                           f"{label} \u00b7 {app.t('range.rows', n=rows)}")
+
+    # -- alert style ---------------------------------------------------
+    def _set_alert_style(self, key: str) -> None:
+        """Select an alert style, asking for a file the first time for custom."""
+        app = self.app
+        if key == "custom" and app.custom_alert_path() is None:
+            self._pick_custom_alert()
+            return
+        app.config.set("alert_style", key)
+        self.refresh()
+
+    def _pick_custom_alert(self) -> None:
+        """Choose a WAV to use as the alert, and copy it into the data folder."""
+        from tkinter import filedialog
+
+        app = self.app
+        try:
+            source = filedialog.askopenfilename(
+                parent=app.root, title=app.t("dev.pick_sound"),
+                filetypes=[("WAV", "*.wav"), ("All", "*.*")])
+        except Exception:  # pragma: no cover - headless
+            source = ""
+        if not source:
+            return
+        ok, reason = app.install_custom_alert(source)
+        if not ok:
+            dialogs.alert(app, app.t(f"dev.sound_err.{reason}"))
+            return
+        self.refresh()
+        app.play_alert("over", force=True, style="custom")
+
+    def _sync_no_content(self) -> None:
+        """Repaint the No Content strip after its timings changed."""
+        self.app.refresh_views()
+
+    # -- AHT sheet -----------------------------------------------------
+    def _sheet_card(self, parent) -> None:
+        """The opt-in AHT sheet: its address, what it does, and Sync.
+
+        The note under the field is not decoration. This is the only feature
+        in CheckMod that touches a network, so the screen that enables it says
+        exactly what the request is.
+        """
+        app = self.app
+        theme, fonts = app.theme, app.fonts
+        self._heading(parent, app.t("dev.sheet"), app.t("dev.sheet_hint"))
+        card = self._card(parent)
+
+        row = self._row(card, app.t("dev.sheet_url"))
+        entry = self._entry(row, str(app.config.get("aht_sheet_url", "") or ""),
+                            self._commit_sheet_url, width=22, font_key="tiny")
+        entry.pack(side="right")
+
+        last = int(app.config.get("aht_sheet_last_sync", 0) or 0)
+        tk.Label(card,
+                 text=(app.t("dev.sheet_last", when=time.strftime("%Y-%m-%d %H:%M",
+                                                                  time.localtime(last)))
+                       if last else app.t("dev.sheet_never")),
+                 bg=theme["surface"], fg=theme["text_faint"], font=fonts["tiny"],
+                 anchor="w").pack(fill="x", padx=12, pady=(0, 2))
+
+        self._sheet_button = self._action(card, app.t("dev.sheet_sync"),
+                                          self._sync_sheet, "primary")
+        if not str(app.config.get("aht_sheet_url", "") or "").strip():
+            self._sheet_button.set_enabled(False)
+        tk.Label(card, text=app.t("dev.sheet_privacy"), bg=theme["surface"],
+                 fg=theme["text_faint"], font=fonts["tiny"], anchor="w",
+                 justify="left", wraplength=290).pack(fill="x", padx=12, pady=(2, 10))
+
+    def _commit_sheet_url(self, value: str) -> None:
+        """Store the sheet link, then re-render so Sync enables or disables.
+
+        The re-render is deferred: this also runs on ``<FocusOut>``, and
+        rebuilding the section immediately would destroy the entry widget from
+        inside its own event handler.
+        """
+        app = self.app
+        value = (value or "").strip()
+        if value == str(app.config.get("aht_sheet_url", "") or ""):
+            return
+        app.config.set("aht_sheet_url", value)
+        try:
+            self.after_idle(self.refresh)
+        except tk.TclError:  # pragma: no cover - closing
+            pass
+
+    def _sync_sheet(self) -> None:
+        """Start a fetch and show progress on the button itself."""
+        app = self.app
+        button = getattr(self, "_sheet_button", None)
+        if button is not None:
+            button.set_text(app.t("dev.sheet_syncing"))
+            button.set_enabled(False)
+
+        def done() -> None:
+            # The section may have been rebuilt (or the app closed) while the
+            # request was in flight, so this has to survive a dead widget.
+            try:
+                self.refresh()
+            except tk.TclError:  # pragma: no cover - window closing
+                pass
+
+        app.sync_aht_from_sheet(on_done=done)
 
     def _export_settings(self) -> None:
         target = self._ask_save_path("checkmod-settings.json", ".json")

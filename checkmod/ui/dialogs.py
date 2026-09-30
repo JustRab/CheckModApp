@@ -11,6 +11,8 @@ from __future__ import annotations
 import tkinter as tk
 from typing import List, Optional, Tuple
 
+from ..history import RANGE_KEYS, format_day, range_bounds
+from ..session import format_duration
 from .primitives import Button
 
 
@@ -157,6 +159,149 @@ class Picker(_Modal):
                    height=30, bg_token="bg_alt").pack(fill="x", pady=2)
 
 
+class SheetPreview(_Modal):
+    """What the AHT sheet says, next to what is configured now.
+
+    Nothing is written before this dialog is accepted. Rows that changed are
+    shown in the accent colour; rows the sheet did not mention are shown as
+    unchanged, and rows the sheet had that no case type matches are listed at
+    the end so a renamed package is visible rather than silently ignored.
+    """
+
+    #: Rows drawn before the list is truncated, to keep the dialog on screen.
+    MAX_ROWS = 9
+
+    def __init__(self, app, rows) -> None:
+        shown = list(rows)[:self.MAX_ROWS]
+        super().__init__(app, width=360, height=138 + len(shown) * 26)
+        theme, fonts = app.theme, app.fonts
+
+        tk.Label(self.body, text=app.t("sheet.preview_title"), bg=theme["bg_alt"],
+                 fg=theme["text"], font=fonts["body_bold"], anchor="w").pack(
+            fill="x", padx=20, pady=(16, 2))
+        tk.Label(self.body, text=app.t("sheet.preview_hint"), bg=theme["bg_alt"],
+                 fg=theme["text_faint"], font=fonts["tiny"], anchor="w",
+                 wraplength=312, justify="left").pack(fill="x", padx=20, pady=(0, 8))
+
+        table = tk.Frame(self.body, bg=theme["bg_alt"])
+        table.pack(fill="both", expand=True, padx=20)
+        for row in shown:
+            line = tk.Frame(table, bg=theme["bg_alt"])
+            line.pack(fill="x", pady=1)
+            unknown = bool(row.get("unknown"))
+            changed = bool(row.get("changed"))
+            name_color = theme["text_faint"] if unknown else theme["text_dim"]
+            tk.Label(line, text=row.get("name") or row.get("label", ""),
+                     bg=theme["bg_alt"], fg=name_color, font=fonts["small"],
+                     anchor="w").pack(side="left")
+            if unknown:
+                value, color = app.t("sheet.unmatched"), theme["warn"]
+            elif changed:
+                value = (f"{format_duration(row['current_s'])}"
+                         f"  \u2192  {format_duration(row['new_s'])}")
+                color = theme["accent"]
+            elif row.get("new_s") is None:
+                value, color = app.t("sheet.no_row"), theme["text_faint"]
+            else:
+                value, color = format_duration(row["new_s"]), theme["text_faint"]
+            tk.Label(line, text=value, bg=theme["bg_alt"], fg=color,
+                     font=fonts["small_bold"] if changed else fonts["small"]).pack(
+                side="right")
+
+        if len(rows) > len(shown):
+            tk.Label(self.body, text=app.t("sheet.more", n=len(rows) - len(shown)),
+                     bg=theme["bg_alt"], fg=theme["text_faint"], font=fonts["tiny"],
+                     anchor="w").pack(fill="x", padx=20, pady=(4, 0))
+
+        buttons = tk.Frame(self.body, bg=theme["bg_alt"])
+        buttons.pack(fill="x", padx=16, pady=16)
+        Button(buttons, theme, fonts, text=app.t("dlg.cancel"),
+               command=lambda: self._close(False), variant="soft", height=32,
+               bg_token="bg_alt").pack(side="left", expand=True, fill="x", padx=4)
+        Button(buttons, theme, fonts, text=app.t("sheet.apply"),
+               command=lambda: self._close(True), variant="primary", height=32,
+               bg_token="bg_alt").pack(side="right", expand=True, fill="x", padx=4)
+
+
+class RangeDialog(_Modal):
+    """Pick the period a CSV export should cover.
+
+    The presets are what gets asked for in practice (a shift, a week, a
+    month); the two date fields are there for "from X to Y" when a manager
+    asks for an exact window. Result is ``(since, until, label)`` in epoch
+    seconds, with ``None`` for an open bound.
+    """
+
+    def __init__(self, app, since_text: str = "", until_text: str = "") -> None:
+        presets = [key for key in RANGE_KEYS if key != "custom"]
+        rows = (len(presets) + 1) // 2
+        super().__init__(app, width=340, height=210 + rows * 32)
+        theme, fonts = app.theme, app.fonts
+
+        tk.Label(self.body, text=app.t("range.title"), bg=theme["bg_alt"],
+                 fg=theme["text"], font=fonts["body_bold"], anchor="w").pack(
+            fill="x", padx=20, pady=(16, 8))
+
+        grid = tk.Frame(self.body, bg=theme["bg_alt"])
+        grid.pack(fill="x", padx=16)
+        for index, key in enumerate(presets):
+            Button(grid, theme, fonts, text=app.t(f"range.{key}"),
+                   command=lambda k=key: self._pick(k), variant="soft", height=28,
+                   radius=7, bg_token="bg_alt", font_key="tiny", width=10).grid(
+                row=index // 2, column=index % 2, sticky="ew", padx=3, pady=3)
+        for column in range(2):
+            grid.grid_columnconfigure(column, weight=1, uniform="range")
+
+        tk.Label(self.body, text=app.t("range.custom_hint"), bg=theme["bg_alt"],
+                 fg=theme["text_faint"], font=fonts["tiny"], anchor="w",
+                 wraplength=292, justify="left").pack(fill="x", padx=20, pady=(12, 4))
+        fields = tk.Frame(self.body, bg=theme["bg_alt"])
+        fields.pack(fill="x", padx=16)
+        self.since = self._entry(fields, since_text)
+        self.since.pack(side="left", expand=True, fill="x", padx=3)
+        tk.Label(fields, text="\u2192", bg=theme["bg_alt"], fg=theme["text_faint"],
+                 font=fonts["small"]).pack(side="left")
+        self.until = self._entry(fields, until_text)
+        self.until.pack(side="left", expand=True, fill="x", padx=3)
+
+        buttons = tk.Frame(self.body, bg=theme["bg_alt"])
+        buttons.pack(fill="x", padx=16, pady=14)
+        Button(buttons, theme, fonts, text=app.t("dlg.cancel"),
+               command=lambda: self._close(None), variant="soft", height=32,
+               bg_token="bg_alt").pack(side="left", expand=True, fill="x", padx=4)
+        Button(buttons, theme, fonts, text=app.t("range.export"),
+               command=lambda: self._pick("custom"), variant="primary", height=32,
+               bg_token="bg_alt").pack(side="right", expand=True, fill="x", padx=4)
+        self.after(60, self.since.focus_set)
+
+    def _entry(self, parent, initial: str) -> tk.Entry:
+        theme, fonts = self.app.theme, self.app.fonts
+        entry = tk.Entry(parent, bg=theme["surface"], fg=theme["text"],
+                         insertbackground=theme["text"], relief="flat",
+                         font=fonts["small"], highlightthickness=1, justify="center",
+                         highlightbackground=theme["border"],
+                         highlightcolor=theme["accent"])
+        if initial:
+            entry.insert(0, initial)
+        entry.bind("<Return>", lambda _e: self._pick("custom"))
+        return entry
+
+    def _pick(self, key: str) -> None:
+        since_text = self.since.get()
+        until_text = self.until.get()
+        since, until = range_bounds(key, starts_on=str(
+            self.app.config.get("week_starts_on", "sunday")),
+            since_text=since_text, until_text=until_text)
+        if key == "custom" and since is None and until is None:
+            # Both fields empty or unparsable: say so rather than quietly
+            # exporting everything under a "from X to Y" label.
+            alert(self.app, self.app.t("range.bad_dates"))
+            return
+        label = self.app.t(f"range.{key}") if key != "custom" else (
+            f"{format_day(since) or '...'}_{format_day(until - 1) if until else '...'}")
+        self._close((since, until, label))
+
+
 # ----------------------------------------------------------------------
 # Convenience wrappers
 # ----------------------------------------------------------------------
@@ -190,3 +335,13 @@ def pick_color(app, initial: str = "#5B8CFF") -> Optional[str]:
         return hex_value
     except Exception:  # pragma: no cover - some minimal Tk builds lack it
         return prompt(app, app.t("dev.custom_color"), initial, "#rrggbb")
+
+
+def sheet_preview(app, rows) -> bool:
+    """Show the sheet's numbers; ``True`` when the user accepts them."""
+    return bool(SheetPreview(app, rows).run())
+
+
+def export_range(app, since_text: str = "", until_text: str = ""):
+    """Ask what period to export. ``(since, until, label)`` or ``None``."""
+    return RangeDialog(app, since_text, until_text).run()

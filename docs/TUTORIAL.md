@@ -37,10 +37,14 @@ The coloured pills at the top are your case types. Out of the box:
 | Voice Chat | 15:00 |
 | Text Chat | 10:00 |
 | Island | 20:00 |
+| Social Overlay | 10:00 * |
+
+\* Social Overlay ships with a placeholder. Set the real figure in *Dev Mode →
+AHT*, or pull it from the team sheet (section 4b).
 
 Clicking one binds it to the current case **and starts the timer** (you can
 turn that off in *Dev Mode → Rules → Start timer when a type is picked*).
-`Alt+1`, `Alt+2`, `Alt+3` do the same from the keyboard.
+`Alt+1` … `Alt+4` do the same from the keyboard.
 
 Picking a different type part-way through a case keeps the elapsed time and
 just swaps the target — moderators reclassify cases all the time, and losing
@@ -97,6 +101,78 @@ Accepted formats:
 | `1:30:00` | 1 hour 30 minutes |
 
 A bare number is read as **minutes**, because that is how AHT is discussed.
+
+---
+
+## 4b. Pulling this week's targets from the team sheet
+
+Targets move every week, and retyping four of them by hand is how they end up
+wrong. If your team lead keeps them in a Google Sheet, CheckMod can read it.
+
+**Already set up.** This build ships pointing at the team's targets sheet, so
+there is nothing to configure — the link is in *Dev Mode → Data → AHT sheet*
+and the Sync button works straight away.
+
+**Setting it up for another team**
+
+1. Give whoever publishes the targets
+   **[CheckMod-AHT-targets-template.xlsx](CheckMod-AHT-targets-template.xlsx)** —
+   upload it to Google Drive (it opens as a Google Sheet) and it is already in
+   the shape CheckMod reads, with a "How to use" tab written for them.
+2. Ask for it to be shared as **"anyone with the link can view"**.
+3. Copy the link from the browser's address bar.
+4. Paste it into *Dev Mode → Data → AHT sheet → Sheet link*, press Enter.
+
+Clearing that field switches the feature off altogether.
+
+**Every week**, press **Sync targets from the sheet**. CheckMod
+reads the sheet, then shows you what it found next to what you have:
+
+```
+Voice Chat        15:00  →  13:00
+Text Chat                  not in sheet
+Island            20:00  →  25:00
+Ghost Queue                no case type
+```
+
+**Nothing changes until you press Apply.** Rows the sheet did not mention are
+left alone, and a row with no matching case type is shown rather than silently
+ignored — usually a sign that a package was renamed.
+
+**What the sheet needs to look like.** One row per package type, with a header
+row naming the columns. Anything resembling "package", "case" or "type" is
+taken as the name, and anything resembling "AHT" or "target" as the value:
+
+| Package | Target AHT (minutes) |
+|---|---|
+| Voice Chat | 15 |
+| Text Chat | 10 |
+| Island | 20 |
+| Social Overlay | *(blank until it is published)* |
+
+`15`, `15 min`, `15:00` and `900s` all mean the same thing, so a sheet that
+already exists in one of those forms needs no reformatting. Cells the sheet
+owner has not filled in yet (`TBC`, `n/a`, blank) are skipped, not guessed at
+— that package keeps the target you already have.
+
+**Plain minutes are the safest form**, which is why the template's column asks
+for them and its cell validation enforces them. Google Sheets reads a typed
+`15:00` as *three o'clock in the afternoon* and exports it as `15:00:00`.
+CheckMod recovers from that (fifteen hours is not a handle time, so it reads
+it back as fifteen minutes), but a sheet that cannot be misread in the first
+place is better than one that has to be rescued.
+
+Only two things about the sheet are fixed: the **first tab** is the one read,
+and row 1 needs a column naming the package and a column naming the target.
+Extra columns, notes, colours and filters are all ignored, and instruction
+rows below the table are skipped — a row with no duration in its target cell
+is never read as a package.
+
+**What this does and does not do.** It is one read of one sheet, when you
+press the button. Nothing about you, your machine or your cases is sent
+anywhere — there is no upload path in the app at all. If your sheet link is
+empty, the feature never runs. Full detail in
+**[PRIVACY.md](PRIVACY.md#1-network-access-one-user-initiated-read)**.
 
 ---
 
@@ -175,6 +251,33 @@ because a wrong record now skews the weekly average that drives your targets.
 
 ---
 
+## 6b. No Content
+
+Some packages arrive with nothing in them. The **No Content** button sits
+below the timer at all times, and pressing it starts the wait:
+
+- a **three-minute countdown** begins;
+- at **two minutes** a calm chime nudges you;
+- at **three minutes** the full alarm sounds, and keeps repeating every 30
+  seconds until you answer.
+
+While the countdown runs there are two answers, and the wait does not end
+until you give one:
+
+| Button | What happens |
+|---|---|
+| **Content** | Content arrived. The countdown ends and the app goes back to normal. |
+| **No Content** | Still nothing. The countdown restarts, and the strip shows how many times in a row it has. |
+
+The countdown keeps running while your machine is locked — walking away does
+not pause it, which is the point.
+
+All three timings are configurable in *Dev Mode → Rules → No Content*
+(countdown length, when the calm nudge lands), and the button can be hidden
+entirely if your queue never needs it.
+
+---
+
 ## 7. Making it yours
 
 Everything below lives in **Dev Mode** (the **DEV** button, or `Ctrl+D`).
@@ -194,6 +297,22 @@ what appears when you hover the row in User Mode. Use it for your team's
 exact policy wording.
 
 Editing the checklist mid-case never clears the ticks you have already made.
+
+### Alert sounds
+
+*Dev Mode → Rules → Alert sound* offers three:
+
+| Style | What it sounds like |
+|---|---|
+| **Default** | Multi-tone chimes and a high/low warble, loud enough to cut through a headset. |
+| **Calm** | Softer and quieter throughout — for a shared room, or a long shift. |
+| **Custom** | A **WAV** file of your own. |
+
+**Hear it** plays each one on demand, so you can compare them without waiting
+out a case. A custom file is copied into the data folder, so the alarm keeps
+working if you move or delete the original. Only WAV is accepted: Windows
+plays it without any extra software, and an MP3 would have failed silently at
+the moment you needed the alarm.
 
 ### Appearance
 
@@ -235,8 +354,18 @@ Below that, Today and All time show:
 That last one is the useful one: it tells you which part of the process to
 tighten up before QA does it for you.
 
-**Export history (CSV)** writes the whole log to a spreadsheet-friendly file,
-with your own checklist labels as column headers.
+**Export history (CSV)** writes the log to a spreadsheet-friendly file, with
+your own checklist labels as column headers. It asks **which period** first:
+
+- a preset — Today, This week, Last week, Last 7 / 30 days, This month, Last
+  month, or Everything;
+- or an exact range: type **from** and **to** as `YYYY-MM-DD`. Both days are
+  included, so `2026-09-01` → `2026-09-07` covers the whole Sunday-to-Saturday
+  week, and two adjacent ranges can never count the same case twice.
+
+The file is named after the period it covers, so a folder of exports stays
+readable. An empty period still writes the header row — "no cases in this
+window" is a result, not a broken file.
 
 ---
 
@@ -252,6 +381,7 @@ with your own checklist labels as column headers.
   `CheckModData` folder next to the executable instead of in your user
   profile — ideal for a USB stick,
 - **export/import settings** to share a team-wide preset,
+- point the app at the team's **AHT sheet** (section 4b),
 - open the data folder,
 - and **erase all data** with one button.
 

@@ -97,8 +97,37 @@ It is excluded from the logged AHT by default. *Dev Mode → Rules → Count
 paused time* includes it.
 
 **Does it track me?**
-No. See [PRIVACY.md](PRIVACY.md). No network code, no telemetry, and the
-record schema has no field for anything that identifies a person or a case.
+No. See [PRIVACY.md](PRIVACY.md). No telemetry, nothing is ever uploaded, and
+the record schema has no field for anything that identifies a person or a
+case.
+
+**Does it use the internet?**
+Only when you press **Sync targets from the sheet**, and only to read the
+team's AHT sheet. That is one read-only HTTPS `GET` of a Google Sheet shared
+for viewing. The link ships already filled in, so the button works without any
+setup — but a configured link does not make the app fetch anything on its own:
+there is no polling and nothing on start-up, and the networking module is not
+imported until the button is pressed. Clearing the link in *Dev Mode → Data*
+switches the feature off. There is no upload path anywhere in the code, so
+nothing about you or your cases can leave the machine.
+[PRIVACY.md §1](PRIVACY.md#1-network-access-one-user-initiated-read)
+has the full list of guarantees and how to verify each one.
+
+**The sheet sync says the sheet is not shared. Why?**
+Google is serving a sign-in page instead of the document. The sheet has to be
+shared as *anyone with the link can view* — CheckMod sends no credentials, so
+a sheet restricted to named people cannot be read. Ask the sheet's owner to
+change the link sharing, or type the targets in Dev Mode instead.
+
+**Can the sheet sync overwrite my targets by surprise?**
+No. It shows what it found next to what you have and writes nothing until you
+press **Apply**. Rows the sheet does not mention are left alone, and a row
+whose name matches no case type is reported rather than applied.
+
+**Does the No Content countdown pause when I lock my PC?**
+No, deliberately. It runs on the same suspend-aware clock as the case timer,
+so stepping away does not stop the alarm you asked for. Press **Content** to
+end the wait.
 
 **Can I delete everything?**
 *Dev Mode → Data → Erase all data*, or just delete the data folder.
@@ -167,6 +196,23 @@ fit, so nothing gets clipped.
 If the file could not be parsed it is renamed to
 `settings.json.broken-<timestamp>` in the data folder rather than deleted,
 and defaults are loaded. The original is still there to inspect.
+
+**I chose a custom alarm and it was rejected.**
+Only WAV files are accepted, up to 30 seconds. Windows plays WAV with no extra
+software; an MP3 or M4A would be accepted at the file picker and then fail
+silently at the moment the alarm was due, which is worse than a refusal.
+Convert it (any audio tool, or Windows Sound Recorder) and pick it again.
+
+**My custom alarm stopped working after I tidied my Downloads folder.**
+It should not have: the file is copied into the CheckMod data folder when you
+choose it, precisely so the original can move. If the copy itself was deleted,
+the app falls back to the default alert rather than going silent — re-pick the
+file to restore it.
+
+**The sheet sync button does nothing.**
+It is disabled until a sheet link is saved. Type the link into *Dev Mode →
+Data → AHT sheet → Sheet link* and press Enter first; the button enables and
+the label under it shows when the last sync happened.
 
 **The statistics are empty.**
 Either no case has been completed yet, or *Dev Mode → Data → Keep local

@@ -277,7 +277,7 @@ class Tutorial(tk.Frame):
             canvas.create_line(cx - 11, cy - 2, cx - 3, cy + 8, cx + 13, cy - 14,
                                fill=theme["ok"], width=3, capstyle="round",
                                joinstyle="round")
-            canvas.create_text(cx, fy2 - 14, text="offline · local · no telemetry",
+            canvas.create_text(cx, fy2 - 14, text="local · no uploads · no telemetry",
                                fill=theme["text_faint"], font=fonts["tiny"])
 
     # ------------------------------------------------------------------

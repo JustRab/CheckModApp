@@ -365,3 +365,170 @@ def test_the_cached_records_cannot_be_mutated_by_a_caller(tmp_path):
     rows = history.load()
     rows.append({"ts": 0})
     assert len(history.load()) == 1
+
+
+# ----------------------------------------------------------------------
+# Date ranges and the ranged CSV export (1.4.0)
+# ----------------------------------------------------------------------
+import datetime                                            # noqa: E402
+
+from checkmod import history as history_mod                # noqa: E402
+
+
+def midnight(year, month, day) -> float:
+    return time.mktime((year, month, day, 0, 0, 0, 0, 0, -1))
+
+
+def test_a_typed_date_becomes_local_midnight():
+    assert history_mod.parse_day("2026-09-30") == midnight(2026, 9, 30)
+
+
+def test_spreadsheet_separators_are_accepted():
+    for text in ("2026/09/30", "2026.09.30", "  2026-09-30 "):
+        assert history_mod.parse_day(text) == midnight(2026, 9, 30)
+
+
+def test_a_date_that_is_not_a_date_is_refused():
+    for text in ("", "   ", "yesterday", "30-09-2026x", "2026-02-30", "2026-13-01"):
+        assert history_mod.parse_day(text) is None
+
+
+def test_the_end_date_is_inclusive_for_the_person_typing_it():
+    """A case logged at 16:40 on the end date belongs in the report."""
+    since, until = history_mod.day_bounds("2026-09-01", "2026-09-07")
+    assert since == midnight(2026, 9, 1)
+    assert until == midnight(2026, 9, 8)
+    assert midnight(2026, 9, 7) + 16 * 3600 < until
+
+
+def test_reversed_dates_are_swapped_rather_than_returning_nothing():
+    assert history_mod.day_bounds("2026-09-07", "2026-09-01") == \
+        history_mod.day_bounds("2026-09-01", "2026-09-07")
+
+
+def test_an_open_bound_stays_open():
+    since, until = history_mod.day_bounds("2026-09-01", "")
+    assert since == midnight(2026, 9, 1) and until is None
+    since, until = history_mod.day_bounds("", "2026-09-07")
+    assert since is None and until == midnight(2026, 9, 8)
+
+
+def test_the_range_presets_line_up_with_the_calendar():
+    now = midnight(2026, 9, 30) + 14 * 3600          # a Wednesday afternoon
+    bounds = {key: history_mod.range_bounds(key, now, "sunday")
+              for key in ("all", "today", "this_week", "last_week",
+                          "last_7", "last_30", "this_month", "last_month")}
+
+    assert bounds["all"] == (None, None)
+    assert bounds["today"] == (midnight(2026, 9, 30), midnight(2026, 10, 1))
+    # Trust & Safety weeks run Sunday to Saturday.
+    assert bounds["this_week"][0] == midnight(2026, 9, 27)
+    assert bounds["last_week"] == (midnight(2026, 9, 20), midnight(2026, 9, 27))
+    assert bounds["last_7"][0] == midnight(2026, 9, 24)
+    assert bounds["last_30"][0] == midnight(2026, 9, 1)
+    assert bounds["this_month"][0] == midnight(2026, 9, 1)
+    assert bounds["last_month"] == (midnight(2026, 8, 1), midnight(2026, 9, 1))
+
+
+def test_a_monday_week_start_is_honoured():
+    now = midnight(2026, 9, 30) + 14 * 3600
+    assert history_mod.range_bounds("this_week", now, "monday")[0] == \
+        midnight(2026, 9, 28)
+
+
+def test_last_month_in_january_rolls_back_a_year():
+    now = midnight(2026, 1, 15) + 9 * 3600
+    assert history_mod.range_bounds("last_month", now) == (
+        midnight(2025, 12, 1), midnight(2026, 1, 1))
+
+
+def test_a_ranged_preset_never_produces_an_inverted_window():
+    now = time.time()
+    for key in history_mod.RANGE_KEYS:
+        since, until = history_mod.range_bounds(key, now)
+        if since is not None and until is not None:
+            assert since < until, key
+
+
+def test_a_day_long_range_is_correct_across_a_daylight_saving_change():
+    """Adding 86400 would be an hour out on the day the clocks change."""
+    since, until = history_mod.day_bounds("2026-03-29", "2026-03-29")
+    assert until > since
+    assert (until - since) in (82800.0, 86400.0, 90000.0)
+
+
+def test_the_export_covers_only_the_requested_period(tmp_path):
+    history = make_history(tmp_path)
+    inside = midnight(2026, 9, 2) + 10 * 3600
+    history.append(record(ts=int(midnight(2026, 8, 31)), duration=100))   # before
+    history.append(record(ts=int(inside), duration=200))                  # inside
+    history.append(record(ts=int(midnight(2026, 9, 9)), duration=300))    # after
+
+    target = tmp_path / "range.csv"
+    since, until = history_mod.day_bounds("2026-09-01", "2026-09-07")
+    assert history.export_csv(target, since=since, until=until) is True
+
+    with open(target, newline="", encoding="utf-8-sig") as handle:
+        rows = list(csv.DictReader(handle))
+    assert [row["duration_s"] for row in rows] == ["200"]
+
+
+def test_a_record_on_the_boundary_is_in_exactly_one_of_two_exports(tmp_path):
+    """``until`` is exclusive, so adjacent ranges cannot double-count."""
+    history = make_history(tmp_path)
+    boundary = midnight(2026, 9, 7) + 23 * 3600 + 59 * 60
+    history.append(record(ts=int(boundary), duration=555))
+
+    first = tmp_path / "week1.csv"
+    second = tmp_path / "week2.csv"
+    week1_since, week1_until = history_mod.day_bounds("2026-09-01", "2026-09-07")
+    week2_since, week2_until = history_mod.day_bounds("2026-09-08", "2026-09-14")
+    history.export_csv(first, since=week1_since, until=week1_until)
+    history.export_csv(second, since=week2_since, until=week2_until)
+
+    def durations(path):
+        with open(path, newline="", encoding="utf-8-sig") as handle:
+            return [row["duration_s"] for row in csv.DictReader(handle)]
+
+    assert durations(first) == ["555"]
+    assert durations(second) == []
+
+
+def test_an_empty_range_still_writes_a_header(tmp_path):
+    """A report that says 'no cases' beats a zero-byte file that looks broken."""
+    history = make_history(tmp_path)
+    history.append(record(ts=int(midnight(2026, 9, 2))))
+    target = tmp_path / "empty.csv"
+    since, until = history_mod.day_bounds("2026-01-01", "2026-01-07")
+    assert history.export_csv(target, since=since, until=until) is True
+
+    with open(target, newline="", encoding="utf-8-sig") as handle:
+        rows = list(csv.reader(handle))
+    assert len(rows) == 1 and rows[0][0] == "date"
+
+
+def test_an_unbounded_export_still_covers_everything(tmp_path):
+    history = make_history(tmp_path)
+    for day in (1, 15, 30):
+        history.append(record(ts=int(midnight(2026, 9, day))))
+    target = tmp_path / "all.csv"
+    assert history.export_csv(target) is True
+    with open(target, newline="", encoding="utf-8-sig") as handle:
+        assert len(list(csv.DictReader(handle))) == 3
+
+
+def test_format_day_round_trips_a_bound():
+    value = midnight(2026, 9, 30)
+    assert history_mod.format_day(value) == "2026-09-30"
+    assert history_mod.format_day(None) == ""
+    assert history_mod.parse_day(history_mod.format_day(value)) == value
+
+
+def test_the_calendar_helpers_agree_with_datetime():
+    """Guards against an off-by-one in the month arithmetic."""
+    now = midnight(2026, 3, 1) + 12 * 3600
+    since, until = history_mod.range_bounds("last_month", now)
+    first = datetime.date.fromtimestamp(since)
+    last_exclusive = datetime.date.fromtimestamp(until)
+    assert (first.year, first.month, first.day) == (2026, 2, 1)
+    assert (last_exclusive.year, last_exclusive.month, last_exclusive.day) == (2026, 3, 1)

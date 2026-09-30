@@ -117,6 +117,52 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "dev.no_audio": ("This platform has no dependency-free audio, so the "
                          "terminal bell is used instead. On Windows the full "
                          "alert tones play."),
+        # --- alert styles ------------------------------------------------
+        "dev.alert_style": "Alert sound",
+        "dev.alert_style_hint": ("Default cuts through a headset. Calm is softer "
+                                 "and quieter for a shared room. Custom plays a "
+                                 "WAV file of your own."),
+        "dev.style_default": "Default",
+        "dev.style_calm": "Calm",
+        "dev.style_custom": "Custom",
+        "dev.style_try": "Hear it",
+        "dev.nudge": "Calm nudge",
+        "dev.pick_sound": "Choose a WAV file",
+        "dev.pick_sound_hint": ("Copied into the data folder, so the alarm keeps "
+                                "working if the original file moves."),
+        "dev.custom_sound": "Your sound",
+        "dev.sound_err.not_wav": ("That file is not a WAV. Windows plays WAV "
+                                  "without any extra software, so an MP3 would "
+                                  "fail silently at the moment you needed it - "
+                                  "convert it to WAV and try again."),
+        "dev.sound_err.unreadable": "That file could not be read.",
+        "dev.sound_err.empty": "That WAV file has no audio in it.",
+        "dev.sound_err.too_long": "Please pick a sound shorter than 30 seconds.",
+        "dev.sound_err.copy_failed": "The file could not be copied to the data folder.",
+        # --- no content ---------------------------------------------------
+        "dev.no_content": "No Content",
+        "dev.no_content_hint": ("The No Content button starts a countdown you "
+                                "have to answer: Content, or No Content again."),
+        "dev.no_content_show": "Show the No Content button",
+        "dev.no_content_len": "Countdown length",
+        "dev.no_content_warn": "Calm nudge at",
+        # --- AHT sheet ----------------------------------------------------
+        "dev.sheet": "AHT sheet",
+        "dev.sheet_hint": ("Press Sync to read this week's AHT from the team's "
+                           "targets sheet. The link below is already set; replace "
+                           "it to use a different sheet, or clear it to switch "
+                           "this off. A sheet must be shared as 'anyone with the "
+                           "link can view' to be readable."),
+        "dev.sheet_url": "Sheet link",
+        "dev.sheet_sync": "Sync targets from the sheet",
+        "dev.sheet_syncing": "Reading the sheet...",
+        "dev.sheet_last": "Last synced {when}",
+        "dev.sheet_never": "Never synced",
+        "dev.sheet_privacy": ("This is the only feature that uses the network. It "
+                              "is one read of that sheet, started by this button. "
+                              "Nothing is uploaded and nothing is sent anywhere "
+                              "else - see PRIVACY.md."),
+        "dev.export_csv_hint": "Choose the period to export",
         "dev.confirm_reset": "Confirm before resetting",
         "dev.require_all": "Require a full checklist to complete",
         "dev.count_paused": "Count paused time",
@@ -176,9 +222,11 @@ STRINGS: Dict[str, Dict[str, str]] = {
                              "hides it from the taskbar. This forces it back in so "
                              "the window cannot get lost behind another app."),
         "misc.cases": "cases",
-        "dev.privacy_note": ("CheckMod never connects to the internet, sends no telemetry "
-                             "and stores no personal data or case identifiers. Everything "
-                             "lives in plain text files on this machine."),
+        "dev.privacy_note": ("CheckMod sends no telemetry, uploads nothing and stores no "
+                             "personal data or case identifiers. Everything lives in plain "
+                             "text files on this machine. The only network request it can "
+                             "make is the AHT sheet read below, which you configure and "
+                             "start yourself."),
         # --- tutorial ------------------------------------------------------
         "tut.title": "How to use CheckMod",
         "tut.next": "Next",
@@ -205,8 +253,10 @@ STRINGS: Dict[str, Dict[str, str]] = {
                        "AHT targets, checklist items and statistics. Hit DEV in the "
                        "title bar."),
         "tut.7.title": "Privacy by design",
-        "tut.7.body": ("No internet, no telemetry, no installer and no admin rights. Your "
-                       "data stays on this machine and one button erases it."),
+        "tut.7.body": ("No telemetry, no uploads, no installer and no admin rights. Your "
+                       "data stays on this machine and one button erases it. The optional "
+                       "AHT sheet sync is the only thing that uses the network, and only "
+                       "when you press it."),
         # --- dialogs -------------------------------------------------------
         "dlg.confirm": "Confirm",
         "dlg.cancel": "Cancel",
@@ -227,6 +277,55 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "misc.version": "Version",
         "misc.created_by": "Created by",
         "misc.shortcuts": "Keyboard shortcuts",
+        # --- no content strip ---------------------------------------------
+        "nc.start": "No Content",
+        "nc.short": "No Cnt",
+        "nc.label": "No Content",
+        "nc.content": "Content",
+        "nc.again": "No Content",
+        "nc.tip": "Start the No Content countdown",
+        "nc.content_tip": "Content arrived - end the countdown",
+        "nc.again_tip": "Still nothing - restart the countdown",
+        "nc.answer": "Answer with Content or No Content",
+        "nc.cycles": "{n} No Content in a row",
+        # --- CSV export range ---------------------------------------------
+        "range.title": "Export which period?",
+        "range.all": "Everything",
+        "range.today": "Today",
+        "range.this_week": "This week",
+        "range.last_week": "Last week",
+        "range.last_7": "Last 7 days",
+        "range.last_30": "Last 30 days",
+        "range.this_month": "This month",
+        "range.last_month": "Last month",
+        "range.custom_hint": "Or from / to (YYYY-MM-DD, both days included):",
+        "range.export": "Export range",
+        "range.bad_dates": "Type both dates as YYYY-MM-DD, or pick a period above.",
+        "range.rows": "{n} cases",
+        # --- AHT sheet sync -----------------------------------------------
+        "sheet.no_url": "Add the sheet link in Dev Mode > Data first.",
+        "sheet.no_changes": "The sheet matches your current targets. Nothing to change.",
+        "sheet.preview_title": "Targets from the sheet",
+        "sheet.preview_hint": ("Nothing has been changed yet. Apply writes only the "
+                               "rows shown in colour."),
+        "sheet.apply": "Apply",
+        "sheet.unmatched": "no case type",
+        "sheet.no_row": "not in sheet",
+        "sheet.more": "+{n} more rows",
+        "sheet.err.bad_url": ("That is not a Google Sheets link. Copy the address "
+                              "from the browser while the sheet is open."),
+        "sheet.err.not_shared": ("The sheet is not shared for viewing. Ask for "
+                                 "'anyone with the link can view'."),
+        "sheet.err.not_found": "That sheet no longer exists at this link.",
+        "sheet.err.blocked": ("The link redirected somewhere other than Google, so "
+                              "the read was stopped."),
+        "sheet.err.offline": ("The sheet could not be reached. Check the connection "
+                              "and try again."),
+        "sheet.err.timeout": "The sheet took too long to answer.",
+        "sheet.err.too_large": "That sheet is too large to read.",
+        "sheet.err.no_rows": ("No AHT values were found. The sheet needs one row per "
+                              "package type, with a name column and a target column."),
+        "sheet.err.http": "The sheet could not be read (error {code}).",
         "misc.none": "Unlimited",
         "misc.days": "days",
         "misc.auto": "auto",

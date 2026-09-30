@@ -17,11 +17,12 @@ type, durations and which adherence items were cleared. See
 from __future__ import annotations
 
 import csv
+import datetime
 import json
 import math
 import os
 import time
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from . import paths
 
@@ -239,9 +240,23 @@ class History:
     # ------------------------------------------------------------------
     # Export
     # ------------------------------------------------------------------
-    def export_csv(self, target_path, check_labels: Optional[Dict[str, str]] = None) -> bool:
-        """Write the log to ``target_path`` as a spreadsheet-friendly CSV."""
-        records = self.load()
+    def export_csv(self, target_path, check_labels: Optional[Dict[str, str]] = None,
+                   since: Optional[float] = None,
+                   until: Optional[float] = None) -> bool:
+        """Write the log to ``target_path`` as a spreadsheet-friendly CSV.
+
+        ``since`` and ``until`` bound the export in epoch seconds; either may
+        be ``None`` for "no bound". ``since`` is inclusive and ``until`` is
+        exclusive, which is what :func:`day_bounds` produces - so a report for
+        a single day covers that day's midnight up to the next, with no risk
+        of a case landing in both of two adjacent exports.
+
+        An empty range still writes the header row: a report that reads
+        "no cases between these dates" is a result, and a zero-byte file
+        looks like a failure.
+        """
+        records = [r for r in self.load(since_ts=since)
+                   if until is None or r.get("ts", 0) < until]
         labels = check_labels or {}
         check_ids: List[str] = []
         for record in records:
@@ -363,3 +378,107 @@ def _local_midnight() -> float:
     now = time.localtime()
     return time.mktime((now.tm_year, now.tm_mon, now.tm_mday, 0, 0, 0,
                         now.tm_wday, now.tm_yday, now.tm_isdst))
+
+
+# ----------------------------------------------------------------------
+# Date ranges (CSV export)
+# ----------------------------------------------------------------------
+#: Ranges offered by the export dialog, in the order they are shown. The UI
+#: supplies the wording; the arithmetic lives here so it can be tested without
+#: a display. ``custom`` is the two typed dates.
+RANGE_KEYS = ("all", "today", "this_week", "last_week", "last_7", "last_30",
+              "this_month", "last_month", "custom")
+
+
+def _midnight_of(day: datetime.date) -> float:
+    """Epoch seconds of local midnight on ``day``.
+
+    ``tm_isdst=-1`` asks the C library to work out the offset for that date,
+    so ranges stay correct across a daylight-saving change - adding 86400 to
+    an epoch would be an hour out for one day a year.
+    """
+    return time.mktime((day.year, day.month, day.day, 0, 0, 0, 0, 0, -1))
+
+
+def parse_day(text: Optional[str]) -> Optional[float]:
+    """Parse ``YYYY-MM-DD`` into local midnight, or ``None`` if unusable.
+
+    ``/`` and ``.`` are accepted as separators because spreadsheets hand out
+    all three. Anything else returns ``None`` so the caller can say "that is
+    not a date" instead of exporting a surprising range.
+    """
+    cleaned = (text or "").strip().replace("/", "-").replace(".", "-")
+    if not cleaned:
+        return None
+    parts = cleaned.split("-")
+    if len(parts) != 3:
+        return None
+    try:
+        day = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
+    except ValueError:
+        return None
+    return _midnight_of(day)
+
+
+def day_bounds(since_text: Optional[str] = "",
+               until_text: Optional[str] = "") -> Tuple[Optional[float], Optional[float]]:
+    """Turn two typed dates into ``(since, until)`` epoch bounds.
+
+    Both dates are inclusive to the person typing them, so ``until`` is
+    returned as the *following* midnight - a case logged at 16:40 on the end
+    date belongs in the report. Either side may be blank for an open bound,
+    and reversed dates are swapped rather than yielding nothing.
+    """
+    since = parse_day(since_text)
+    end = parse_day(until_text)
+    if since is not None and end is not None and end < since:
+        since, end = end, since
+    until = None
+    if end is not None:
+        day = datetime.date.fromtimestamp(end) + datetime.timedelta(days=1)
+        until = _midnight_of(day)
+    return since, until
+
+
+def range_bounds(key: str, now: Optional[float] = None,
+                 starts_on: str = "sunday",
+                 since_text: str = "", until_text: str = ""
+                 ) -> Tuple[Optional[float], Optional[float]]:
+    """Epoch bounds for one of :data:`RANGE_KEYS`.
+
+    ``until`` is exclusive throughout, and ``None`` on either side means "no
+    bound". Weeks follow the same Sunday-to-Saturday convention as the weekly
+    plan, so an exported week matches the numbers on screen.
+    """
+    stamp = time.localtime(now if now is not None else time.time())
+    today = datetime.date(stamp.tm_year, stamp.tm_mon, stamp.tm_mday)
+    tomorrow = _midnight_of(today + datetime.timedelta(days=1))
+    week = week_start(now, starts_on)
+
+    if key == "today":
+        return _midnight_of(today), tomorrow
+    if key == "this_week":
+        return week, tomorrow
+    if key == "last_week":
+        previous = datetime.date.fromtimestamp(week) - datetime.timedelta(days=7)
+        return _midnight_of(previous), week
+    if key == "last_7":
+        return _midnight_of(today - datetime.timedelta(days=6)), tomorrow
+    if key == "last_30":
+        return _midnight_of(today - datetime.timedelta(days=29)), tomorrow
+    if key == "this_month":
+        return _midnight_of(today.replace(day=1)), tomorrow
+    if key == "last_month":
+        first = today.replace(day=1)
+        previous = (first - datetime.timedelta(days=1)).replace(day=1)
+        return _midnight_of(previous), _midnight_of(first)
+    if key == "custom":
+        return day_bounds(since_text, until_text)
+    return None, None                      # "all", and anything unrecognised
+
+
+def format_day(value: Optional[float]) -> str:
+    """``YYYY-MM-DD`` for an epoch bound, or ``""`` for no bound."""
+    if value is None:
+        return ""
+    return time.strftime("%Y-%m-%d", time.localtime(value))

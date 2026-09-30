@@ -26,7 +26,7 @@ def make_config(tmp_path) -> Config:
 def test_defaults_cover_the_documented_requirements(tmp_path):
     config = make_config(tmp_path)
     names = [case["name"] for case in config.get("case_types")]
-    assert names == ["Voice Chat", "Text Chat", "Island"]
+    assert names == ["Voice Chat", "Text Chat", "Island", "Social Overlay"]
     labels = [item["label"] for item in config.get("checklist")]
     assert labels == [
         "Escalation Adherence", "Enforcement Adherence",
@@ -44,6 +44,9 @@ def test_shipped_aht_targets_match_the_documented_values(tmp_path):
         "Voice Chat": 15 * 60,
         "Text Chat": 10 * 60,
         "Island": 20 * 60,
+        # Social Overlay shipped without a published target; 10 min is the
+        # placeholder the sheet sync (or Dev Mode) overwrites.
+        "Social Overlay": 10 * 60,
     }
 
 
@@ -142,8 +145,8 @@ def test_active_lists_hide_disabled_entries(tmp_path):
     cases[1]["enabled"] = False
     config.set("case_types", cases)
 
-    assert len(config.active_cases()) == 2
-    assert len(config.get("case_types")) == 3   # disabled, not deleted
+    assert len(config.active_cases()) == 3
+    assert len(config.get("case_types")) == 4   # disabled, not deleted
 
 
 def test_case_by_id_finds_a_case_or_returns_none(tmp_path):
@@ -210,3 +213,47 @@ def test_subscribers_are_notified_and_a_broken_one_cannot_break_the_app(tmp_path
     config.subscribe(seen.append)
     config.set("theme", "nord")
     assert seen == ["theme"]
+
+
+# ----------------------------------------------------------------------
+# The shipped team AHT sheet
+# ----------------------------------------------------------------------
+def test_the_team_sheet_ships_as_the_default_link(tmp_path):
+    """A new install can press Sync without being set up first."""
+    from checkmod.config import TEAM_AHT_SHEET_URL
+
+    config = make_config(tmp_path)
+    assert config.get("aht_sheet_url") == TEAM_AHT_SHEET_URL
+    assert TEAM_AHT_SHEET_URL.startswith("https://docs.google.com/spreadsheets/d/")
+
+
+def test_the_shipped_link_is_one_the_sync_can_actually_read(tmp_path):
+    """A default the parser rejects would be worse than no default."""
+    from checkmod import sheets
+
+    url = make_config(tmp_path).get("aht_sheet_url")
+    assert sheets.csv_url(url), "the shipped link is not a readable sheet URL"
+    assert sheets.host_allowed(url)
+
+
+def test_upgrading_fills_in_the_team_sheet_once(tmp_path):
+    """A pre-release build stored an empty URL, which would win on merge."""
+    from checkmod.config import TEAM_AHT_SHEET_URL
+
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"schema": 3, "aht_sheet_url": ""}), encoding="utf-8")
+    assert Config(path=path).get("aht_sheet_url") == TEAM_AHT_SHEET_URL
+
+
+def test_upgrading_never_overwrites_a_sheet_link_somebody_set(tmp_path):
+    other = "https://docs.google.com/spreadsheets/d/SOMEONE_ELSES/edit"
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"schema": 3, "aht_sheet_url": other}), encoding="utf-8")
+    assert Config(path=path).get("aht_sheet_url") == other
+
+
+def test_clearing_the_link_stays_cleared(tmp_path):
+    """Clearing the field is how the feature is switched off; it must stick."""
+    config = make_config(tmp_path)
+    config.set("aht_sheet_url", "")
+    assert make_config(tmp_path).get("aht_sheet_url") == ""

@@ -14,8 +14,8 @@ Two distributions are produced from one recipe:
     folder anywhere and run the exe inside it.
 
 Keeping the analysis settings here rather than duplicating them in two spec
-files means the exclude list (which is a privacy guarantee, not just a size
-optimisation) can never drift between the two builds.
+files means the exclude list (which bounds what the artifact can do, not just
+its size) can never drift between the two builds.
 """
 
 from __future__ import annotations
@@ -24,14 +24,22 @@ import os
 
 #: Standard-library packages CheckMod never imports.
 #:
-#: Excluding them halves the binary, but the networking entries matter for a
-#: different reason: they make "this application cannot reach the network" a
-#: structural property of the artifact rather than a claim in a README. A
-#: reviewer can confirm it by inspecting the bundle.
+#: Excluding them halves the binary, and the omissions also bound what the
+#: artifact is *able* to do - a reviewer can confirm each one by inspecting
+#: the bundle rather than taking a README's word for it.
+#:
+#: Until 1.4.0 that included every networking module. The optional AHT sheet
+#: sync (``checkmod/sheets.py``) needs an HTTPS ``GET``, so ``urllib.request``
+#: and its dependencies now ship. What remains excluded is still meaningful:
+#: no mail, no FTP, no XML-RPC, no async server machinery - the one thing the
+#: binary can do on a network is fetch a URL, which is the whole of that
+#: feature. See docs/PRIVACY.md for the rest of the guarantee.
 EXCLUDES = [
-    # Networking - deliberately absent. See docs/PRIVACY.md.
-    "asyncio", "email", "http", "urllib.request", "ssl", "socket",
-    "ftplib", "smtplib", "telnetlib", "xml", "xmlrpc",
+    # HTTPS GET is supported (the opt-in AHT sheet sync) and nothing else:
+    # every other protocol stays out of the bundle.
+    "ftplib", "smtplib", "poplib", "imaplib", "telnetlib", "nntplib",
+    "xmlrpc", "socketserver", "http.server", "wsgiref", "asyncio",
+    "xml",
     # Development and packaging tooling.
     "pydoc_data", "unittest", "doctest", "pdb", "distutils", "setuptools",
     "pip", "test", "lib2to3",
@@ -40,6 +48,15 @@ EXCLUDES = [
     # Unused standard-library subsystems.
     "sqlite3", "multiprocessing", "concurrent",
 ]
+
+
+#: Modules PyInstaller must bundle even though nothing imports them at module
+#: scope. ``checkmod.sheets`` imports ``urllib.request`` inside its fetch
+#: function - deliberately, so an install that was never pointed at a sheet
+#: never loads networking code - and a lazy import is easy for a future
+#: PyInstaller to miss. Naming them here makes the sync work in the frozen
+#: build regardless.
+HIDDEN_IMPORTS = ["urllib.request", "urllib.error", "http.client", "ssl"]
 
 
 def project_root(spec_path: str) -> str:

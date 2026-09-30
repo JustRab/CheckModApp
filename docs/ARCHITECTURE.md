@@ -16,8 +16,11 @@ Every structural decision follows from four requirements:
    touches the registry, `Program Files`, services or global hooks. Also
    rules out a runtime that must be installed first — hence a frozen
    frozen binary.
-2. **Privacy first.** Rules out network code, telemetry and any storage of
-   identifying data. See [PRIVACY.md](PRIVACY.md).
+2. **Privacy first.** Rules out telemetry, any upload path and any storage of
+   identifying data. Since 1.4.0 there is exactly one network capability —
+   `sheets.py`, an optional read-only fetch of a team AHT sheet, off until
+   configured and confined to one module so it stays auditable at a glance.
+   See [PRIVACY.md](PRIVACY.md).
 3. **Small download, auditable source.** Rules out Electron (~150 MB) and
    heavy GUI toolkits. Tkinter ships with Python, so the frozen binary is
    ~12 MB and the dependency list is empty.
@@ -36,7 +39,14 @@ checkmod/
 │                  atomic save, change notification.
 ├── session.py     The stopwatch and checklist state machine. No Tkinter
 │                  import — pure, deterministic, fully unit-tested.
-├── history.py     Append-only JSON Lines log + statistics + CSV export.
+├── history.py     Append-only JSON Lines log, statistics, date ranges and
+│                  the ranged CSV export.
+├── alerts.py      Alert tones synthesised from the standard library, in
+│                  three styles (default / calm / a user's own WAV).
+├── sheets.py      The ONLY module that can open a socket: an optional,
+│                  user-initiated, read-only fetch of the team's AHT
+│                  sheet. Audit of network behaviour starts and ends here.
+├── shortcuts.py   Desktop and start-up shortcuts (no registry, no admin).
 ├── theme.py       Colour tokens, eight presets, colour maths, contrast.
 ├── i18n.py        The string table.
 ├── app.py         The shell: Tk root, window flags, view swapping,
@@ -47,16 +57,18 @@ checkmod/
     │                  Slider, Switch, ScrollFrame, Tooltip.
     ├── titlebar.py    Custom window chrome and the resize grip.
     ├── checkrow.py    Adherence rows and the checklist panel.
-    ├── dialogs.py     Themed modal Confirm / Alert / Prompt / Picker.
+    ├── dialogs.py     Themed modals: Confirm / Alert / Prompt / Picker,
+    │                  the sheet-sync preview and the export-period picker.
+    ├── nocontent.py   The always-visible No Content countdown strip.
     ├── user_view.py   User Mode (full and compact layouts).
     ├── dev_view.py    Dev Mode (eight sections).
     └── tutorial.py    Seven-step overlay walkthrough.
 ```
 
 Dependency direction is strictly downward: `ui/` imports from the package
-root, never the reverse. `session.py`, `history.py`, `config.py`, `theme.py`
-and `paths.py` import no UI code at all, which is why 81 of the 91 tests run
-without a display.
+root, never the reverse. `session.py`, `history.py`, `config.py`, `theme.py`,
+`alerts.py`, `sheets.py` and `paths.py` import no UI code at all, which is why
+216 of the 277 tests run without a display.
 
 ---
 
@@ -68,6 +80,7 @@ Three long-lived objects, all owned by `App`:
 |---|---|---|
 | `Config` | Every persisted preference | Whole session |
 | `Session` | The case in progress: elapsed time, checks | Reset per case |
+| `NoContentCycle` | The No Content wait: countdown, cycles, which alert is owed | Reset per wait |
 | `History` | The on-disk log and its statistics | Whole session |
 
 Views are **disposable**. Any change that affects layout destroys the widget
@@ -215,8 +228,11 @@ single-file variant for local use). Both share `packaging/build_config.py`:
 - `upx=False` — UPX compression is the leading cause of antivirus false
   positives on PyInstaller binaries; the few megabytes are not worth it.
 - A generous `excludes` list drops standard-library modules the app never
-  uses. It halves the binary **and** removes networking from the bundle
-  entirely, which is a privacy property, not just a size one.
+  uses. It halves the binary **and** bounds what the artifact can do, which
+  is a privacy property, not just a size one. Mail, FTP, XML-RPC and every
+  server module stay out; `urllib.request` and `ssl` ship from 1.4.0 because
+  the optional sheet sync needs them, and `HIDDEN_IMPORTS` names them so the
+  lazy import inside `sheets.fetch` cannot be optimised away.
 - `version_info.txt` fills in the Windows *Properties → Details* tab, which
   is the first thing IT looks at when an unsigned binary appears.
 
