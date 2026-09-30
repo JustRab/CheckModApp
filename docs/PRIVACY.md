@@ -14,7 +14,8 @@ one names the file to check.
 
 | Question | Answer |
 |---|---|
-| Does it connect to the internet? | **No.** No networking module is imported, and networking modules are excluded from the build. |
+| Does it connect to the internet? | **Only if you ask it to, and only to one place.** With no AHT sheet configured — the shipped default — nothing on the network is touched. Configure a Google Sheets link and the Sync button performs one HTTPS `GET` of that sheet. See section 1. |
+| Does anything leave the machine? | **No.** There is no upload path anywhere in the code: no `POST`, no file upload, no request body. Settings, history and case data never leave the computer. |
 | Does it send telemetry, analytics or crash reports? | **No.** None exists. |
 | Does it auto-update? | **No.** The binary never changes itself. |
 | Does it store personal data? | **No.** No names, IDs, case references or free text — the record schema has no field for them. |
@@ -27,23 +28,56 @@ one names the file to check.
 
 ---
 
-## 1. No network access
+## 1. Network access: one optional, user-initiated read
 
-The application performs no network I/O of any kind. There is no HTTP client,
-no socket, no DNS lookup, no update check, no analytics beacon.
+CheckMod has exactly one feature that uses a network, and it is off until
+somebody configures it.
+
+**What it is.** Weekly AHT targets are published by a team lead in a Google
+Sheet. Rather than retyping them, a moderator can paste that sheet's link into
+*Dev Mode → Data → AHT sheet* and press **Sync targets from the sheet**.
+
+**What it does, precisely** — all of this is in `checkmod/sheets.py`, which is
+under 300 lines and is the only module involved:
+
+| Property | Guarantee | Where |
+|---|---|---|
+| Off by default | Shipped with `aht_sheet_url` empty. With no link configured, the networking module is never even imported — the `import urllib.request` lives *inside* the fetch function. | `checkmod/config.py`, `sheets.fetch` |
+| User-initiated | No polling, no timer, no background thread waiting to fire. One button press, one request. | `App.sync_aht_from_sheet` |
+| Read-only | One HTTPS `GET`. No request body, no `POST`, no upload of any kind. | `sheets.fetch` |
+| Nothing identifying is sent | No cookies, no credentials, no `Authorization` header, no machine or user name. The only header is `User-Agent: CheckMod`. | `sheets.fetch`, `tests/test_sheets.py` |
+| Google only | The link must be an HTTPS `docs.google.com` spreadsheet URL, and a redirect is followed only to Google's own file host. A configured URL cannot be turned into a request anywhere else. | `sheets.ALLOWED_HOSTS`, `sheets.csv_url` |
+| Bounded | Ten-second timeout, 512 KiB read cap. | `sheets.TIMEOUT`, `sheets.MAX_BYTES` |
+| Nothing is written blindly | The numbers read from the sheet are shown next to the current ones, and applied only when the user accepts them. | `App._offer_sheet_rows` |
+
+**What it is not.** No telemetry, no analytics, no crash reporting, no
+auto-update, no licence check, no account, no sign-in. None of those exist in
+the codebase, and no code path sends anything outward.
 
 **How to verify**
 
 ```bash
-# No networking imports anywhere in the application.
+# Every network-capable import in the application - there are four, all in
+# one module, and all inside the function that performs the fetch:
 grep -rnE "import (socket|ssl|http|urllib|requests|smtplib|ftplib)" checkmod/
-# -> no matches
+# -> checkmod/sheets.py only
+
+# Nothing uploads: no POST, no request body, no upload helper anywhere.
+grep -rniE "urlopen\(|\bPOST\b|data=|files=|upload" checkmod/sheets.py
+# -> only `seen["data"] is None`-style assertions live in the tests
 ```
 
-The build goes one step further. `packaging/CheckMod.spec` lists
-`socket`, `ssl`, `http`, `urllib.request`, `smtplib`, `ftplib`, `telnetlib`
-and `asyncio` in its `excludes`, so those modules are **not packaged into the
-executable at all**. The capability is absent, not merely unused.
+The build bounds this too. `packaging/build_config.py` still excludes
+`smtplib`, `ftplib`, `poplib`, `imaplib`, `telnetlib`, `nntplib`, `xmlrpc`,
+`http.server`, `socketserver`, `wsgiref` and `asyncio`, so the executable
+cannot send mail, serve anything, or speak any protocol other than the HTTPS
+`GET` above. `urllib.request` and `ssl` ship from 1.4.0 onward because the
+sheet sync needs them; before 1.4.0 no networking module was packaged at all.
+
+**If your policy does not allow it.** Leave the sheet link empty and the
+feature never runs. Nothing else in the app depends on it: targets can be
+typed in Dev Mode exactly as before. A deployment can also be verified from
+the settings file — `aht_sheet_url` empty means the feature is inert.
 
 ---
 
@@ -180,12 +214,13 @@ can read all of it. Suggested order:
 2. `checkmod/history.py` — every write to disk of case data.
 3. `checkmod/session.py` — the record schema.
 4. `checkmod/config.py` — settings persistence.
-5. `packaging/CheckMod.spec` — what is and is not packaged.
+5. `checkmod/sheets.py` — the only module that can open a socket.
+6. `packaging/build_config.py` — what is and is not packaged.
 
 Useful checks:
 
 ```bash
-# Networking
+# Networking - expect matches in checkmod/sheets.py and nowhere else
 grep -rnE "socket|urllib|requests|http\.client" checkmod/
 
 # Subprocess use (there is exactly one: "open the data folder" in Dev Mode)
@@ -212,4 +247,6 @@ cause of these false positives.
 
 Issues and questions belong in this repository's issue tracker. There is no
 telemetry channel, no support server and no phone-home path through which the
-app could report anything back.
+app could report anything back. The only outbound request it can make is the
+sheet read in section 1, which asks Google for a document and tells it nothing
+about you or your work.

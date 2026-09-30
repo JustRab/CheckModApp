@@ -19,7 +19,7 @@ from . import paths
 
 #: Bumped whenever :data:`DEFAULTS` changes shape in a way that needs a
 #: migration step in :func:`migrate`.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 #: AHT target used for a newly created case type, and as the fallback when a
@@ -87,6 +87,16 @@ DEFAULTS: Dict[str, Any] = {
     # can start wrapping up rather than discovering the overrun afterwards.
     "prealert_enabled": True,
     "prealert_seconds": 10,
+    # Which sound set the alerts use: the built-in tones, a gentler set, or a
+    # WAV the user supplied. See checkmod.alerts.
+    "alert_style": "default",       # "default" | "calm" | "custom"
+    "custom_alert_file": "",        # path inside the data folder, when custom
+    # ----- No Content watch -------------------------------------------------
+    # A standing prompt rather than a case: start it, and it asks again every
+    # few minutes until the moderator says there is content.
+    "no_content_seconds": 180,      # full cycle length
+    "no_content_warn_seconds": 120, # calm nudge at this point in the cycle
+    "no_content_enabled": True,     # show the button at all
     # ----- Adaptive AHT ----------------------------------------------------
     # The timer target can track the weekly average instead of sitting on the
     # static per-type number: run long on a few cases and the next ones ask
@@ -99,11 +109,21 @@ DEFAULTS: Dict[str, Any] = {
     # ----- Data ------------------------------------------------------------
     "history_enabled": True,
     "history_retention_days": 30,
+    # ----- Team AHT sheet ---------------------------------------------------
+    # The ONLY outbound request this app can make, and only when the user
+    # presses the button: a GET of a Google Sheet published to the web, to read
+    # the week's AHT targets. Empty URL = the networking code is never even
+    # imported. Nothing is ever uploaded. See docs/PRIVACY.md.
+    "aht_sheet_url": "",
+    "aht_sheet_last_sync": 0,       # epoch of the last successful fetch
     # ----- Domain data -----------------------------------------------------
     "case_types": [
         _case("voice", "Voice Chat", 900, "#7C5CFF"),    # 15:00
         _case("text", "Text Chat", 600, "#2BB3A3"),      # 10:00
         _case("island", "Island", 1200, "#F2A03D"),      # 20:00
+        # Target unknown at the time of writing - edit it in Dev Mode, or pull
+        # the week's real figure from the team sheet.
+        _case("social", "Social Overlay", 600, "#4CC2FF"),   # 10:00
     ],
     "checklist": [
         _check("escalation", "Escalation Adherence",
@@ -130,6 +150,8 @@ LIMITS = {
     "snap_threshold": (0, 60),
     "history_retention_days": (0, 3650),
     "prealert_seconds": (0, 120),
+    "no_content_seconds": (30, 3600),
+    "no_content_warn_seconds": (0, 3600),
     "alert_repeats": (1, 5),
     "adaptive_recovery_cases": (1, 200),
     "adaptive_min_factor": (0.2, 1.0),
@@ -180,6 +202,20 @@ def migrate(data: Dict[str, Any]) -> Dict[str, Any]:
             if not isinstance(item, dict) or "applies_to" in item:
                 continue
             item["applies_to"] = ["island"] if item.get("id") == "evidence" else []
+
+    if schema < 3:
+        # Schema 3 added the Social Overlay case type. Existing installs keep
+        # their own list, so add it only when nothing by that id is there.
+        cases = data.get("case_types")
+        # Only extend a list that holds at least one real case type. A file
+        # whose list is empty or unusable falls through to the defaults in
+        # ``_clean_cases`` - which already include Social Overlay - and
+        # appending here would instead leave that install with Social Overlay
+        # as its *only* case type.
+        usable = [c for c in cases if isinstance(c, dict) and c.get("name")] \
+            if isinstance(cases, list) else []
+        if usable and not any(c.get("id") == "social" for c in usable):
+            cases.append(_case("social", "Social Overlay", 600, "#4CC2FF"))
 
     data["schema"] = max(schema, SCHEMA_VERSION)
     return data
@@ -351,6 +387,16 @@ class Config:
         data["mode"] = "dev" if data.get("mode") == "dev" else "user"
         if data.get("language") not in STRINGS:
             data["language"] = DEFAULT_LANGUAGE
+        if data.get("alert_style") not in ("default", "calm", "custom"):
+            data["alert_style"] = "default"
+        # The calm nudge has to land inside the cycle to be heard at all.
+        try:
+            cycle = int(data.get("no_content_seconds", 180))
+            warn = int(data.get("no_content_warn_seconds", 120))
+            if warn >= cycle:
+                data["no_content_warn_seconds"] = max(0, cycle - 30)
+        except (TypeError, ValueError):
+            pass
         data["case_types"] = self._clean_cases(data.get("case_types"))
         data["checklist"] = self._clean_checks(data.get("checklist"))
         return data

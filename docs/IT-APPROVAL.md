@@ -24,8 +24,8 @@ Source: <https://github.com/JustRab/CheckModApp>
 | Administrator rights? | **Never** — not to install, run, update or build. |
 | Registry changes? | **None.** |
 | Services, drivers, scheduled tasks, start-up entries? | **None.** |
-| Network connections? | **None.** No networking module is imported, and networking is excluded from the build. |
-| Telemetry / analytics / crash reporting? | **None.** |
+| Network connections? | **One, optional, off by default.** If a moderator configures a Google Sheets link for the team's AHT targets, the Sync button performs a single HTTPS `GET` of that sheet. With no link configured — the shipped default — the app makes no network request at all, and the networking module is never imported. Nothing is ever uploaded. Details: [PRIVACY.md §1](PRIVACY.md). |
+| Telemetry / analytics / crash reporting? | **None.** No code path sends anything about the machine, the user or their work anywhere. |
 | Auto-update? | **None.** The binary never modifies itself. |
 | Keyboard hooks or screen capture? | **None.** Shortcuts bind to its own window only. |
 | Personal data stored? | **None.** No names, user IDs, case references or free text. |
@@ -122,9 +122,12 @@ which is usually already sanctioned.
 ## Verifying the claims
 
 ```bash
-# No networking anywhere in the application
+# Every network-capable import: four, all in checkmod/sheets.py, all inside
+# the function that performs the optional sheet read
 grep -rnE "import (socket|ssl|http|urllib|requests|smtplib|ftplib)" checkmod/
-# -> no matches
+
+# The hosts that module is allowed to talk to
+grep -n "ALLOWED_HOSTS" -A3 checkmod/sheets.py
 
 # Every subprocess call (there is exactly one: "open the data folder")
 grep -rn "subprocess\|os.system\|startfile" checkmod/
@@ -139,7 +142,8 @@ Suggested reading order for a code review:
 2. `checkmod/history.py` — every write of case data
 3. `checkmod/session.py` — the record schema (`Session.snapshot`)
 4. `checkmod/config.py` — settings persistence
-5. `packaging/build_config.py` — what is and is not packaged
+5. `checkmod/sheets.py` — the only module that can open a socket
+6. `packaging/build_config.py` — what is and is not packaged
 
 The record schema is enforced by a test
 (`test_snapshot_captures_aggregates_and_no_identifying_data`), so a future

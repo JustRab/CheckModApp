@@ -337,3 +337,152 @@ def test_elapsed_never_goes_negative():
     session.start()
     clock.now -= 50
     assert session.elapsed >= 0
+
+
+# ----------------------------------------------------------------------
+# No Content cycle (1.4.0)
+# ----------------------------------------------------------------------
+from checkmod.session import NoContentCycle          # noqa: E402
+
+
+def make_cycle(duration=180, warn=120):
+    clock = FakeClock()
+    return NoContentCycle(clock=clock, duration_s=duration, warn_s=warn), clock
+
+
+def test_a_fresh_cycle_is_not_running():
+    cycle, _clock = make_cycle()
+    assert cycle.active is False
+    assert cycle.elapsed == 0.0
+    assert cycle.due_alert() is None
+
+
+def test_the_countdown_runs_and_reports_what_is_left():
+    cycle, clock = make_cycle()
+    cycle.start()
+    clock.advance(45)
+    assert cycle.elapsed == 45
+    assert cycle.remaining == 135
+    assert cycle.status() == "ok"
+
+
+def test_the_calm_nudge_fires_once_at_the_warning_point():
+    cycle, clock = make_cycle()
+    cycle.start()
+    clock.advance(119)
+    assert cycle.due_alert() is None
+    clock.advance(1)                       # 2:00
+    assert cycle.due_alert() == "nudge"
+    assert cycle.status() == "warn"
+    clock.advance(10)
+    assert cycle.due_alert() is None, "the calm nudge repeated"
+
+
+def test_the_loud_alert_fires_when_the_span_runs_out():
+    cycle, clock = make_cycle()
+    cycle.start()
+    clock.advance(120)
+    assert cycle.due_alert() == "nudge"
+    clock.advance(60)                      # 3:00
+    assert cycle.due_alert() == "over"
+    assert cycle.status() == "over"
+
+
+def test_the_loud_alert_repeats_while_nobody_answers():
+    """The point of the state is that an answer is owed."""
+    cycle, clock = make_cycle()
+    cycle.start()
+    clock.advance(180)
+    assert cycle.due_alert() == "over"
+    clock.advance(NoContentCycle.REPEAT_SECONDS - 1)
+    assert cycle.due_alert() is None
+    clock.advance(1)
+    assert cycle.due_alert() == "over"
+
+
+def test_pressing_no_content_again_restarts_the_span_and_counts_it():
+    cycle, clock = make_cycle()
+    cycle.start()
+    clock.advance(150)
+    cycle.start()
+    assert cycle.cycles == 2
+    assert cycle.elapsed == 0.0
+    assert cycle.remaining == 180
+    # The nudge is owed again for the new span.
+    clock.advance(120)
+    assert cycle.due_alert() == "nudge"
+
+
+def test_pressing_content_ends_the_wait_entirely():
+    cycle, clock = make_cycle()
+    cycle.start()
+    clock.advance(200)
+    cycle.stop()
+    assert cycle.active is False
+    assert cycle.due_alert() is None
+    assert cycle.status() == "ok"
+    clock.advance(1000)
+    assert cycle.elapsed == 0.0
+
+
+def test_a_new_run_after_content_starts_counting_from_one():
+    cycle, _clock = make_cycle()
+    cycle.start()
+    cycle.start()
+    assert cycle.cycles == 2
+    cycle.stop()
+    cycle.start()
+    assert cycle.cycles == 1
+
+
+def test_the_wait_keeps_counting_while_the_machine_sleeps():
+    """Same suspend-aware clock as the case timer: a locked PC is not a pause."""
+    cycle, clock = make_cycle()
+    cycle.start()
+    clock.advance(400)                     # a coffee break, machine locked
+    assert cycle.elapsed == 400
+    assert cycle.status() == "over"
+
+
+def test_a_warning_at_or_past_the_deadline_is_pulled_back_inside_it():
+    cycle, _clock = make_cycle()
+    cycle.configure(180, 180)
+    assert cycle.warn_s < cycle.duration_s
+    cycle.configure(180, 900)
+    assert cycle.warn_s < cycle.duration_s
+
+
+def test_a_zero_warning_disables_the_calm_nudge():
+    cycle, clock = make_cycle(duration=180, warn=0)
+    cycle.start()
+    clock.advance(179)
+    assert cycle.due_alert() is None
+    clock.advance(1)
+    assert cycle.due_alert() == "over"
+
+
+def test_reconfiguring_mid_wait_does_not_lose_the_running_span():
+    cycle, clock = make_cycle()
+    cycle.start()
+    clock.advance(60)
+    cycle.configure(300, 240)
+    assert cycle.active is True
+    assert cycle.elapsed == 60
+    assert cycle.remaining == 240
+
+
+def test_reset_clears_the_cycle_count():
+    cycle, _clock = make_cycle()
+    cycle.start()
+    cycle.start()
+    cycle.reset()
+    assert cycle.active is False and cycle.cycles == 0
+
+
+def test_progress_crosses_one_at_the_deadline():
+    cycle, clock = make_cycle()
+    cycle.start()
+    clock.advance(90)
+    assert cycle.progress == 0.5
+    clock.advance(120)
+    assert cycle.progress > 1.0

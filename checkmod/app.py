@@ -20,16 +20,21 @@ elevation and no IT involvement.
 
 from __future__ import annotations
 
+import os
+import shutil
 import sys
+import threading
+import time
 import tkinter as tk
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 from . import APP_NAME, __version__, paths
 from .config import Config
-from . import alerts
+from . import alerts, sheets
 from .history import History
 from .i18n import Translator
-from .session import Session, format_duration
+from .session import NoContentCycle, Session, format_duration
 from .theme import build_theme
 from .ui import dialogs
 from .ui.dev_view import DevView
@@ -54,6 +59,12 @@ class App:
         self.config = Config()
         self.translator = Translator(self.config.get("language", "en"))
         self.session = Session()
+        # The No Content wait is independent of the case stopwatch: a package
+        # with nothing in it still has to be answered.
+        self.no_content = NoContentCycle(
+            duration_s=int(self.config.get("no_content_seconds", 180)),
+            warn_s=int(self.config.get("no_content_warn_seconds", 120)),
+        )
         self.history = History(paths.history_file(),
                                enabled=bool(self.config.get("history_enabled", True)))
         self.history.prune(int(self.config.get("history_retention_days", 30)))
@@ -72,6 +83,7 @@ class App:
         self._save_job = None
         self._over_alerted = False
         self._flash_state = False
+        self._sheet_busy = False        # one sheet fetch at a time
 
         self._setup_root()
         self.rebuild_shell()
@@ -400,10 +412,14 @@ class App:
         self.schedule_config_save()
         if key in ("theme", "accent", "palette_overrides", "font_family", "font_scale",
                    "corner_radius", "compact", "show_ring", "show_footer_stats",
-                   "language", "mode", "*"):
+                   "language", "mode", "no_content_enabled", "*"):
             self.schedule_restyle()
         elif key in ("always_on_top", "opacity", "frameless"):
             self.apply_window_flags()
+        elif key in ("no_content_seconds", "no_content_warn_seconds"):
+            self.no_content.configure(
+                int(self.config.get("no_content_seconds", 180)),
+                int(self.config.get("no_content_warn_seconds", 120)))
 
     # ------------------------------------------------------------------
     # Window manipulation
@@ -673,6 +689,43 @@ class App:
         self.sync_session_target()
 
     # ------------------------------------------------------------------
+    # No Content
+    # ------------------------------------------------------------------
+    def start_no_content(self) -> None:
+        """Begin - or restart - the No Content wait.
+
+        The same call backs both buttons: the always-visible "No Content" and
+        the "still nothing" answer inside the strip. Restarting is deliberate
+        and counted, so the panel can show how long the queue has been empty.
+        """
+        self.no_content.configure(int(self.config.get("no_content_seconds", 180)),
+                                  int(self.config.get("no_content_warn_seconds", 120)))
+        self.no_content.start()
+        self.refresh_views()
+
+    def end_no_content(self) -> None:
+        """Content arrived: leave the wait and go back to timing cases."""
+        self.no_content.stop()
+        self.refresh_views()
+
+    def _check_no_content(self) -> None:
+        """Play whichever No Content alert is owed this tick.
+
+        The latching is in :class:`~checkmod.session.NoContentCycle`, so this
+        is just "ask, and play what comes back".
+        """
+        if not self.no_content.active:
+            return
+        role = self.no_content.due_alert()
+        if not role:
+            return
+        # Deliberately not gated on the case-timer alert settings: somebody
+        # who turned off the AHT heads-up still pressed No Content, and the
+        # whole point of the state is that an answer is owed. Muting it is
+        # either the sound switch or hiding the button.
+        self.play_alert(role)
+
+    # ------------------------------------------------------------------
     # Tutorial
     # ------------------------------------------------------------------
     def show_tutorial(self) -> None:
@@ -703,6 +756,7 @@ class App:
             self._update_status_dot()
             self._check_prealert()
             self._check_over_alert()
+            self._check_no_content()
         except tk.TclError:  # pragma: no cover - window closing
             return
         self._tick_job = self.root.after(TICK_MS, self._tick)
@@ -768,17 +822,177 @@ class App:
         self.session.over_alert_fired = True
         self.play_alert("over")
 
-    def play_alert(self, kind: str, force: bool = False) -> bool:
-        """Play one of the generated alert patterns.
+    def alert_style(self) -> str:
+        """The configured alert style, coerced to one the app can play."""
+        style = str(self.config.get("alert_style", "default") or "default")
+        if style == "custom" and self.custom_alert_path() is None:
+            return "default"      # nothing uploaded (or the file went away)
+        return style if style in ("default", "calm", "custom") else "default"
+
+    def custom_alert_path(self):
+        """Path to the user's own alert sound, or ``None``.
+
+        A relative setting is resolved against the data folder, which is where
+        :meth:`install_custom_alert` puts the copy - so the alert survives the
+        original file being moved, and a portable install carries its sound
+        with it.
+        """
+        name = str(self.config.get("custom_alert_file", "") or "").strip()
+        if not name:
+            return None
+        path = paths.data_dir() / name if not os.path.isabs(name) else Path(name)
+        return path if path.exists() else None
+
+    def install_custom_alert(self, source) -> Tuple[bool, str]:
+        """Validate ``source`` and copy it in as the custom alert.
+
+        Returns ``(ok, reason)``; ``reason`` is one of the codes from
+        :func:`checkmod.alerts.validate_custom`, or ``"copy_failed"``. The
+        file is copied rather than referenced so the alarm cannot break later
+        because a download folder was cleaned out.
+        """
+        ok, reason = alerts.validate_custom(source)
+        if not ok:
+            return False, reason
+        target = paths.data_dir() / "alert.wav"
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(str(source), str(target))
+        except OSError:
+            return False, "copy_failed"
+        self.config.set("custom_alert_file", target.name)
+        self.config.set("alert_style", "custom")
+        return True, ""
+
+    def play_alert(self, kind: str, force: bool = False,
+                   style: Optional[str] = None) -> bool:
+        """Play one of the alert patterns in the user's chosen style.
 
         ``force`` bypasses the sound setting, for the test buttons in Dev
-        Mode. Returns whether audio was produced, so callers can tell the
-        difference between "muted" and "this platform has no audio".
+        Mode, and ``style`` overrides the configured one so those buttons can
+        preview a style before it is selected. Returns whether audio was
+        produced, so callers can tell the difference between "muted" and
+        "this platform has no audio".
         """
         if not force and not self.config.get("sound_enabled", True):
             return False
         repeats = int(self.config.get("alert_repeats", 2)) if kind == "over" else 1
-        return alerts.play(kind, root=self.root, repeats=repeats)
+        chosen = style or self.alert_style()
+        custom = self.custom_alert_path() if chosen == "custom" else None
+        if chosen == "custom" and custom is None:
+            chosen = "default"
+        return alerts.play(kind, root=self.root, repeats=repeats,
+                           style=chosen, custom_path=custom)
+
+    # ------------------------------------------------------------------
+    # AHT sheet sync
+    # ------------------------------------------------------------------
+    def sync_aht_from_sheet(self, on_done=None) -> None:
+        """Fetch the team's AHT sheet and offer the numbers it holds.
+
+        Runs the request on a worker thread and polls for the result, because
+        a ten-second timeout on the UI thread is a ten-second frozen window.
+        Nothing is written until the user accepts the preview - see
+        :mod:`checkmod.sheets` for what the request does and does not do.
+
+        ``on_done`` is called with no arguments when the exchange finishes,
+        however it finished, so the button that started it can go back to its
+        normal label.
+        """
+        url = str(self.config.get("aht_sheet_url", "") or "").strip()
+        if not url:
+            dialogs.alert(self, self.t("sheet.no_url"))
+            if on_done:
+                on_done()
+            return
+        if self._sheet_busy:
+            return
+        if sheets.csv_url(url) is None:
+            dialogs.alert(self, self.t("sheet.err.bad_url"))
+            if on_done:
+                on_done()
+            return
+
+        self._sheet_busy = True
+        cases = [dict(case) for case in self.config.get("case_types", [])]
+        outcome: dict = {}
+
+        def worker() -> None:
+            try:
+                outcome["result"] = sheets.sync(url, cases)
+            except Exception:                     # never leave the poll waiting
+                outcome["result"] = (False, [], "offline")
+
+        threading.Thread(target=worker, name="checkmod-sheet", daemon=True).start()
+        self._poll_sheet(outcome, on_done)
+
+    def _poll_sheet(self, outcome: dict, on_done=None, waited: int = 0) -> None:
+        """Check for the worker's result, then hand it to the preview."""
+        if "result" not in outcome:
+            if waited > int((sheets.TIMEOUT + 5) * 1000 / 150):
+                self._sheet_busy = False          # belt and braces
+                if on_done:
+                    on_done()
+                return
+            try:
+                self.root.after(150, lambda: self._poll_sheet(outcome, on_done, waited + 1))
+            except tk.TclError:                   # pragma: no cover - closing
+                self._sheet_busy = False
+            return
+
+        self._sheet_busy = False
+        ok, rows, reason = outcome["result"]
+        try:
+            if not ok:
+                dialogs.alert(self, self.sheet_error_text(reason))
+            else:
+                self._offer_sheet_rows(rows)
+        finally:
+            if on_done:
+                on_done()
+
+    def sheet_error_text(self, reason: str) -> str:
+        """A sentence for a fetch failure code.
+
+        Anything that came back as a bare HTTP status gets the generic line
+        with the number in it, rather than a raw key on screen.
+        """
+        if reason.startswith("http_"):
+            return self.t("sheet.err.http", code=reason[5:] or "?")
+        known = ("bad_url", "not_shared", "not_found", "blocked", "offline",
+                 "timeout", "too_large", "no_rows")
+        return self.t(f"sheet.err.{reason}" if reason in known else "sheet.err.offline")
+
+    def _offer_sheet_rows(self, rows) -> None:
+        """Show the preview and apply it if the user accepts."""
+        changes = [row for row in rows if row.get("changed")]
+        if not changes:
+            self.config.set("aht_sheet_last_sync", int(time.time()))
+            dialogs.alert(self, self.t("sheet.no_changes"))
+            return
+        if not dialogs.sheet_preview(self, rows):
+            return
+        self.apply_sheet_targets(changes)
+
+    def apply_sheet_targets(self, changes) -> int:
+        """Write accepted targets into the case types. Returns rows changed."""
+        wanted = {row["case_id"]: int(row["new_s"]) for row in changes
+                  if row.get("case_id") and row.get("new_s")}
+        if not wanted:
+            return 0
+        cases = [dict(case) for case in self.config.get("case_types", [])]
+        applied = 0
+        for case in cases:
+            if case.get("id") in wanted and case.get("target_s") != wanted[case["id"]]:
+                case["target_s"] = wanted[case["id"]]
+                applied += 1
+        if applied:
+            self.config.set("case_types", cases)
+            self.config.set("aht_sheet_last_sync", int(time.time()))
+            self.sync_session_target()
+            self.apply_adaptive_target()
+            self.refresh_views()
+        return applied
 
     # ------------------------------------------------------------------
     # Help

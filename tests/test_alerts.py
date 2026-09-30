@@ -150,3 +150,88 @@ def test_repeats_are_clamped_to_a_sane_range(monkeypatch):
         if thread.name == "checkmod-alert":
             thread.join(timeout=5)
     assert len(fake.calls) == 5
+
+
+# ----------------------------------------------------------------------
+# Styles and custom sounds (1.4.0)
+# ----------------------------------------------------------------------
+def test_every_style_renders_every_role():
+    for style in alerts.STYLES:
+        for role in alerts.ROLES:
+            with wave.open(io.BytesIO(alerts.wav_for(role, style))) as handle:
+                assert handle.getnframes() > 0, f"{style}/{role} is empty"
+
+
+def test_the_calm_style_is_a_different_and_quieter_sound():
+    default = alerts.wav_for("over", "default")
+    calm = alerts.wav_for("over", "calm")
+    assert default != calm
+    assert max(calm) <= max(default), "the calm alert is not quieter"
+
+
+def test_an_unknown_style_falls_back_to_default_rather_than_silence():
+    assert alerts.wav_for("over", "klingon") == alerts.wav_for("over", "default")
+
+
+def test_an_unknown_role_still_produces_audio():
+    assert len(alerts.wav_for("no-such-role", "calm")) > 44   # > WAV header
+
+
+def test_validate_custom_accepts_a_real_wav(tmp_path):
+    path = tmp_path / "ok.wav"
+    path.write_bytes(alerts.render([(440.0, 0.2)]))
+    assert alerts.validate_custom(path) == (True, "")
+
+
+def test_validate_custom_rejects_a_file_that_is_not_a_wav(tmp_path):
+    """An MP3 would fail at the moment the alarm was needed, not before."""
+    path = tmp_path / "song.mp3"
+    path.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00not really audio")
+    assert alerts.validate_custom(path) == (False, "not_wav")
+
+
+def test_validate_custom_reports_a_missing_file():
+    ok, reason = alerts.validate_custom("/nope/does-not-exist.wav")
+    assert ok is False and reason in ("unreadable", "not_wav")
+
+
+def test_validate_custom_rejects_a_marathon_sound(tmp_path):
+    path = tmp_path / "long.wav"
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(8000)
+        handle.writeframes(b"\x00\x00" * (8000 * 31))
+    assert alerts.validate_custom(path) == (False, "too_long")
+
+
+def test_a_custom_sound_is_played_from_the_file(monkeypatch, tmp_path):
+    path = tmp_path / "mine.wav"
+    path.write_bytes(alerts.render([(500.0, 0.1)]))
+    fake = FakeWinsound()
+    monkeypatch.setitem(sys.modules, "winsound", fake)
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    assert alerts.play("over", root=None, style="custom", custom_path=path) is True
+    for thread in threading.enumerate():
+        if thread.name == "checkmod-alert":
+            thread.join(timeout=5)
+
+    assert fake.calls
+    payload, flags = fake.calls[0]
+    assert payload == str(path)
+    assert flags & fake.SND_FILENAME
+    assert not (flags & fake.SND_MEMORY)
+
+
+def test_the_custom_style_without_a_file_still_makes_a_sound(monkeypatch):
+    """A misconfigured custom alert must never be a silent alarm."""
+    fake = FakeWinsound()
+    monkeypatch.setitem(sys.modules, "winsound", fake)
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    assert alerts.play("over", root=None, style="custom") is True
+    for thread in threading.enumerate():
+        if thread.name == "checkmod-alert":
+            thread.join(timeout=5)
+    assert fake.calls[0][0] == alerts.wav_for("over", "default")

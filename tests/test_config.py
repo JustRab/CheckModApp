@@ -26,7 +26,7 @@ def make_config(tmp_path) -> Config:
 def test_defaults_cover_the_documented_requirements(tmp_path):
     config = make_config(tmp_path)
     names = [case["name"] for case in config.get("case_types")]
-    assert names == ["Voice Chat", "Text Chat", "Island"]
+    assert names == ["Voice Chat", "Text Chat", "Island", "Social Overlay"]
     labels = [item["label"] for item in config.get("checklist")]
     assert labels == [
         "Escalation Adherence", "Enforcement Adherence",
@@ -44,6 +44,9 @@ def test_shipped_aht_targets_match_the_documented_values(tmp_path):
         "Voice Chat": 15 * 60,
         "Text Chat": 10 * 60,
         "Island": 20 * 60,
+        # Social Overlay shipped without a published target; 10 min is the
+        # placeholder the sheet sync (or Dev Mode) overwrites.
+        "Social Overlay": 10 * 60,
     }
 
 
@@ -142,8 +145,8 @@ def test_active_lists_hide_disabled_entries(tmp_path):
     cases[1]["enabled"] = False
     config.set("case_types", cases)
 
-    assert len(config.active_cases()) == 2
-    assert len(config.get("case_types")) == 3   # disabled, not deleted
+    assert len(config.active_cases()) == 3
+    assert len(config.get("case_types")) == 4   # disabled, not deleted
 
 
 def test_case_by_id_finds_a_case_or_returns_none(tmp_path):

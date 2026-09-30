@@ -147,6 +147,29 @@ are ordinary items — rename them, reorder them, or replace them entirely.
 | **Alert sound** | On | A rising two-note chime for the heads-up and an urgent high/low warble once the target is passed, so they are distinguishable by ear. The tones are synthesised at runtime from the standard library — no audio files, no libraries — and Dev Mode has a button to play each on demand. |
 | **Repeat the over-target alert** | 2× | 1–5. How many times the urgent pattern plays. |
 
+### Alert style
+
+| Style | Effect |
+|---|---|
+| **Default** | Multi-tone chimes plus an urgent high/low warble. Loud enough to carry through a headset. |
+| **Calm** | The same roles, softer patterns, ~60% of the volume. For a shared room. |
+| **Custom** | A WAV file you choose. It is copied into the data folder, so moving or deleting the original cannot break the alarm. Only WAV is accepted — `winsound` plays nothing else without a dependency, and a rejected file is better than an alarm that fails silently when it matters. Maximum 30 seconds. |
+
+**Hear it** plays any style on demand, including one you have not selected yet.
+
+### No Content
+
+| Control | Default | Effect |
+|---|---|---|
+| **Show the No Content button** | On | Off removes the strip from both layouts. |
+| **Countdown length** | 3:00 | 0:30 – 15:00. How long the wait runs before the loud alarm. |
+| **Calm nudge at** | 2:00 | Where the gentle chime lands. Always clamped below the countdown length; 0 disables the nudge. |
+
+Once the countdown runs out, the loud alert repeats every 30 seconds until the
+moderator answers with **Content** or **No Content**. The wait uses the same
+suspend-aware clock as the case timer, so locking the machine does not pause
+it.
+
 ### Adaptive AHT
 
 | Control | Default | Effect |
@@ -180,7 +203,8 @@ the adaptive one in force at the time, so past cases stay interpretable.
 | **Keep history for** | 1 – 365 days, or *Unlimited*. Older records are pruned at start-up. |
 | **Storage path** | Shown on screen. **Open data folder** reveals it in the file manager. |
 | **Portable mode** | Stores settings and history in `CheckModData\` next to the executable instead of your user profile. Existing files are not moved automatically — you keep both copies and decide. |
-| **Export history (CSV)** | Spreadsheet-friendly export using your own checklist labels as column headers. |
+| **Export history (CSV)** | Spreadsheet-friendly export using your own checklist labels as column headers. Asks for the period first: a preset (today, this/last week, last 7 or 30 days, this/last month, everything) or an exact `YYYY-MM-DD` from/to range. Both typed dates are inclusive, and the bound is exclusive internally so two adjacent ranges cannot double-count a case. |
+| **AHT sheet** | Optional. Paste a Google Sheets link and **Sync targets from the sheet** reads this week's AHT from it, previews the changes, and applies only what you accept. One read-only HTTPS request, started by the button, and the only network access in the app — see [PRIVACY.md](PRIVACY.md). Leave the link empty and the feature never runs. |
 | **Export / Import settings** | Share a configuration as a JSON file. |
 | **Restore factory settings** | Resets every preference; history is untouched. |
 | **Erase all data** | Deletes the history **and** resets settings. |
@@ -251,6 +275,13 @@ Full file, with the factory values:
   "count_paused_time": false,
   "prealert_enabled": true,
   "prealert_seconds": 10,           // 0 = off
+  "alert_style": "default",         // "default" | "calm" | "custom"
+  "custom_alert_file": "",          // WAV name inside the data folder
+
+  // ---- no content ----
+  "no_content_enabled": true,
+  "no_content_seconds": 180,        // 30 .. 3600
+  "no_content_warn_seconds": 120,   // always kept below the line above
 
   // ---- adaptive AHT ----
   "adaptive_target": true,
@@ -262,12 +293,15 @@ Full file, with the factory values:
   // ---- data ----
   "history_enabled": true,
   "history_retention_days": 30,     // 0 = unlimited
+  "aht_sheet_url": "",              // "" = the sheet sync never runs
+  "aht_sheet_last_sync": 0,         // epoch seconds, written by a sync
 
   // ---- domain ----
   "case_types": [
     { "id": "voice",  "name": "Voice Chat", "target_s": 900,  "color": "#7C5CFF", "enabled": true },
     { "id": "text",   "name": "Text Chat",  "target_s": 600,  "color": "#2BB3A3", "enabled": true },
-    { "id": "island", "name": "Island",     "target_s": 1200, "color": "#F2A03D", "enabled": true }
+    { "id": "island", "name": "Island",     "target_s": 1200, "color": "#F2A03D", "enabled": true },
+    { "id": "social", "name": "Social Overlay", "target_s": 600, "color": "#4CC2FF", "enabled": true }
   ],
 
   "checklist": [

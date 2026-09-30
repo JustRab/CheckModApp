@@ -86,10 +86,12 @@ is often already sanctioned on a developer or analyst machine.
 ### If you ever do make the repo public
 
 Nothing in this repository contains credentials, internal hostnames, policy
-text or case data — the app has no network code and records no personal
-data (see [PRIVACY.md](PRIVACY.md)). The data-leak risk of publishing would
-come from anything *you* add later: real case examples in the checklist hints,
-internal queue names in the case types, or an exported `history.jsonl`. Note
+text or case data — the app records no personal data (see
+[PRIVACY.md](PRIVACY.md)). The data-leak risk of publishing would come from
+anything *you* add later: real case examples in the checklist hints, internal
+queue names in the case types, an exported `history.jsonl`, or **the link to
+your team's AHT sheet** — `aht_sheet_url` lives in `settings.json`, so never
+commit that file or paste its contents into an issue. Note
 that `.gitignore` already excludes `settings.json`, `history.jsonl` and the
 `CheckModData/` folder, so local data cannot be committed by accident.
 

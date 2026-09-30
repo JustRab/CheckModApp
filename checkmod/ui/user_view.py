@@ -20,6 +20,7 @@ from typing import Dict
 from ..session import format_duration, parse_duration
 from . import dialogs
 from .checkrow import ChecklistPanel
+from .nocontent import NoContentPanel
 from .primitives import Bar, Button, Ring, Segmented, Tooltip, draw_round_rect
 
 
@@ -105,6 +106,15 @@ class UserView(tk.Frame):
                                 radius=max(4, int(app.config.get("corner_radius", 12)) - 2),
                                 bg_token="bg", width=86)
         self.btn_reset.pack(side="left", padx=(8, 0))
+
+        # --- no content -----------------------------------------------
+        # Above the checklist, not below it: when the countdown is running
+        # there is no case to clear yet, and the answer the moderator owes
+        # should be the thing nearest the timer.
+        self.nocontent = None
+        if app.config.get("no_content_enabled", True):
+            self.nocontent = NoContentPanel(outer, app, compact=False)
+            self.nocontent.pack(fill="x", pady=(10, 0))
 
         # --- checklist ------------------------------------------------
         header = tk.Frame(outer, bg=theme["bg"])
@@ -205,6 +215,11 @@ class UserView(tk.Frame):
         )
         self.btn_undo.pack(side="right")
 
+        self.nocontent = None
+        if app.config.get("no_content_enabled", True):
+            self.nocontent = NoContentPanel(outer, app, compact=True)
+            self.nocontent.pack(fill="x", pady=(6, 0))
+
         self.meta = None
         self.checklist = None
         self.hint = None
@@ -263,6 +278,8 @@ class UserView(tk.Frame):
 
         if self.checklist is not None:
             self.checklist.sync()
+        if self.nocontent is not None:
+            self.nocontent.sync()
         self._sync_mini_checks()
         self._sync_controls()
         self.tick()
@@ -347,6 +364,8 @@ class UserView(tk.Frame):
         """Called ~5x/second by the app to advance the timer display."""
         app = self.app
         session = app.session
+        if self.nocontent is not None:
+            self.nocontent.tick()
         warn_pct = int(app.config.get("warn_at_pct", 80))
         status = session.status(warn_pct)
         case = app.config.case_by_id(session.case_id)

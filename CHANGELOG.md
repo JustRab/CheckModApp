@@ -4,6 +4,80 @@ All notable changes to CheckMod are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] — 2026-09-30
+
+### Added
+
+- **Social Overlay case type.** Ships with a 10:00 placeholder target - the
+  real figure is a Dev Mode edit or one sheet sync away. Existing installs get
+  it added by a settings migration without losing their own case types.
+- **No Content.** An always-visible button for a package with nothing in it.
+  Pressing it starts a three-minute countdown: a calm chime at two minutes,
+  the full alarm at three, repeating every 30 seconds until answered.
+  **Content** ends the wait and returns the app to normal; **No Content**
+  restarts it and counts the cycle. It runs on the same suspend-aware clock as
+  the case timer, so locking the machine does not stop it. Present in both the
+  full and compact layouts; lengths configurable, and the strip can be hidden.
+- **Alert styles.** *Default* (multi-tone, cuts through a headset), *Calm*
+  (softer patterns at ~60% volume, for a shared room) and *Custom* — a WAV of
+  your own, validated before it is accepted and copied into the data folder so
+  moving the original cannot break the alarm. Only WAV is accepted, because
+  `winsound` plays nothing else without a dependency and an MP3 would have
+  failed silently at the moment the alarm was due. Each style can be
+  auditioned from Dev Mode.
+- **Ranged CSV export.** The export now asks which period to cover: Today,
+  This week, Last week, Last 7 / 30 days, This month, Last month, Everything,
+  or an exact `YYYY-MM-DD` from/to range. Both typed dates are inclusive while
+  the internal bound is exclusive, so two adjacent ranges can never
+  double-count a case, and the ranges stay correct across a daylight-saving
+  change. The file is named after the period it covers, and an empty period
+  still writes the header row rather than a zero-byte file.
+- **AHT sheet sync** (`checkmod/sheets.py`). Targets change weekly and
+  retyping them is how they end up wrong. Paste the link to the team's Google
+  Sheet into Dev Mode → Data and press **Sync targets from the sheet**:
+  CheckMod reads this week's numbers, shows them next to the current ones, and
+  writes only what the user accepts. Rows the sheet does not mention are left
+  alone; a row matching no case type is reported rather than ignored.
+  `15:00`, `15`, `15 min` and `900s` are all understood, and cells that are
+  blank or `TBC` are skipped. The fetch runs on a worker thread, so a slow
+  sheet never freezes the window.
+
+### Changed
+
+- **The frozen binary now contains `urllib.request` and `ssl`.** Before
+  1.4.0 every networking module was excluded from the build, which made "this
+  application cannot reach the network" a structural property of the artifact.
+  The sheet sync needs one HTTPS `GET`, so that is no longer true and the
+  documentation no longer claims it. What replaces it is a narrower guarantee,
+  stated honestly and verifiable the same way: the feature is off until a
+  sheet link is configured (and the networking import lives *inside* the fetch
+  function, so an unconfigured install never loads it), it runs only when a
+  person presses the button, it is read-only with no request body and no
+  upload path anywhere in the code, it sends no cookies, credentials or
+  identifiers, and it will only talk to `docs.google.com` and Google's own
+  download host. Mail, FTP, XML-RPC and every server module remain excluded.
+  `PRIVACY.md`, `IT-APPROVAL.md`, `README.md`, `FAQ.md`, `BUILD.md` and
+  `ARCHITECTURE.md` were rewritten accordingly rather than left overstating
+  the position.
+
+### Fixed
+
+- **A settings file with an unusable `case_types` list could end up with
+  Social Overlay as its only case type.** The schema-3 migration appended the
+  new type before validation dropped the malformed entries, leaving a
+  one-entry list that no longer looked empty, so the "fall back to the
+  defaults" path never ran.
+
+### Internal
+
+- 277 tests (up from 216), including the interface: the No Content strip in
+  both layouts and its alert timings, alert styles and custom-sound handling,
+  the sheet sync end to end with a faked fetch, and the ranged export writing
+  exactly the cases inside its window. The sheet tests pin down the guarantees
+  above - that a non-Google URL never reaches the network at all, that the
+  shipped redirect handler refuses a redirect off Google, and that the request
+  carries no cookie or authorization header.
+
 ## [1.3.0] — 2026-09-03
 
 ### Fixed
@@ -220,7 +294,8 @@ First release.
 
 ### Privacy
 - No network code of any kind; networking modules are excluded from the
-  frozen binary.
+  frozen binary. *(Changed in 1.4.0 - see that entry: one optional,
+  user-initiated, read-only sheet fetch.)*
 - No telemetry, analytics, crash reporting or auto-update.
 - No personal data or case identifiers are recorded — the record schema has
   no field for them, and a test enforces it.

@@ -6,7 +6,7 @@
 
 **A floating, always-on-top moderation checklist with built-in AHT tracking.**
 
-Portable · offline · no installer · no administrator rights
+Portable · local-first · no installer · no administrator rights
 
 </div>
 
@@ -55,18 +55,21 @@ are ever requested**, so it never needs an IT ticket.
 | | |
 |---|---|
 | **Always on top** | The window floats above every other application, so the checklist never disappears behind the moderation queue. One click un-pins it. |
-| **AHT per case type** | Voice Chat, Text Chat and Island ship with their own targets. Add, rename, recolour, reorder, disable or delete case types, and edit any target in seconds — from Dev Mode or straight from the timer. |
+| **AHT per case type** | Voice Chat, Text Chat, Island and Social Overlay ship with their own targets. Add, rename, recolour, reorder, disable or delete case types, and edit any target in seconds — from Dev Mode or straight from the timer. |
+| **AHT sheet sync** | Targets change every week. Paste the link to the team's Google Sheet once, then press Sync: CheckMod reads this week's numbers, shows them next to your current ones, and changes nothing until you accept. Optional, off until you configure it — see [Privacy](#privacy-and-security). |
+| **No Content** | An always-visible button for a package with nothing in it. It starts a three-minute countdown, nudges calmly at two minutes and alarms at three, and waits for an answer: *Content* ends it, *No Content* restarts it. Lengths are configurable. |
 | **Adherence checklist** | Escalation, Enforcement, Evidence and Comment Adherence, each with a hover description. **Per case type** — Evidence Adherence applies to Island only, so Voice and Text chats show three items. Fully editable: add your own, reword them, change which types they apply to. |
 | **Adaptive AHT** | The target tracks the weekly average instead of a static number: run long on a few cases and the next ones ask for slightly less. Spread over a configurable number of cases, clamped at both ends, and switchable off. |
 | **Weekly plan** | This week Sunday–Saturday, per case type: count, running average vs target, and how many more cases at what AHT to get back on target. |
 | **Undo** | Removes the last logged case and puts it back on the clock so it can be corrected. Mis-clicking Complete skews nothing. |
 | **Live AHT gauge** | The ring fills as the case runs, turns amber at a configurable threshold and red once the target is passed. A heads-up alert fires a configurable number of seconds *before* the target, while there is still time to wrap up. |
+| **Alert sounds** | Multi-tone alerts that carry through a headset, a calmer set for a shared room, or a WAV file of your own. All generated in code — no audio files to trust. |
 | **Two modes** | *User Mode* is a deliberately tiny surface for daily work. *Dev Mode* exposes every option, plus statistics. |
 | **Deeply customisable** | 8 themes, 10 accent swatches plus any custom colour, opacity, corner radius, font, text scale, layout switches, snapping, thresholds — all live, no restart. |
 | **Compact layout** | Collapses to a single strip that tucks into a screen corner next to your queue. |
-| **Local statistics** | This week per case type with its recovery plan, plus cases handled, average AHT, percentage within target, percentage with a clean checklist, and which adherence item you miss most. Exportable to CSV. |
+| **Local statistics** | This week per case type with its recovery plan, plus cases handled, average AHT, percentage within target, percentage with a clean checklist, and which adherence item you miss most. Exportable to CSV for any period — a shift, a week, a month, or an exact from/to range. |
 | **Built-in tutorial** | A seven-step walkthrough on first run, reachable any time from the **?** button or `F1`. |
-| **Privacy first** | Zero network code. Zero telemetry. No personal data and no case identifiers are ever stored. One button erases everything. |
+| **Privacy first** | Zero telemetry. Nothing is ever uploaded. No personal data and no case identifiers are stored. The only network request the app can make is the optional sheet read you configure yourself. One button erases everything. |
 | **Zero dependencies** | Pure Python standard library. The whole app is auditable in an afternoon. |
 
 ---
@@ -189,9 +192,13 @@ in the bottom-right corner resizes the window.
 CheckMod was written for a corporate environment, so the privacy properties
 are structural rather than promised:
 
-- **No network code at all.** The application imports no networking module.
-  The build even *excludes* `socket`, `ssl`, `http` and `urllib.request` from
-  the executable, so the capability is not merely unused — it is not present.
+- **One optional network request, and nothing else.** With no AHT sheet
+  configured — the shipped default — CheckMod makes no network request at all,
+  and never even imports a networking module. Configure a Google Sheets link
+  and the Sync button performs a single HTTPS `GET` of that sheet: read-only,
+  started by you, restricted to Google's own hosts, with no cookies or
+  identifiers attached. **Nothing is ever uploaded** — there is no `POST` and
+  no request body anywhere in the code.
 - **No telemetry, no analytics, no crash reporting, no auto-update.**
 - **No personal data.** A completed-case record contains the case *type*, the
   duration, the target and which adherence items were cleared. There is no
@@ -258,9 +265,12 @@ python -m pip install pytest
 python -m pytest tests/ -v          # add xvfb-run -a on a headless Linux box
 ```
 
-91 tests cover the timer maths, settings validation and self-healing, the
-history log and its statistics, colour contrast in every theme, and a full
-interface smoke pass that builds every view and every theme.
+277 tests cover the timer maths, the No Content countdown and its alerts,
+settings validation and self-healing, the history log, its statistics and its
+date ranges, the AHT sheet parsing and the guarantees around its one network
+request, colour contrast in every theme, and a full interface smoke pass that
+builds every view and every theme. 216 of them need no display; the rest run
+under `xvfb-run` on Linux.
 
 ---
 
@@ -272,7 +282,10 @@ CheckModApp/
 │   ├── app.py                Window management, state wiring, tick loop
 │   ├── config.py             Settings: defaults, validation, persistence
 │   ├── session.py            Stopwatch + checklist state machine (no UI)
-│   ├── history.py            Local JSON Lines log and its statistics
+│   ├── history.py            Local JSON Lines log, statistics, date ranges
+│   ├── alerts.py             Alert tones, generated in code (3 styles)
+│   ├── sheets.py             Optional AHT sheet read - the only network code
+│   ├── shortcuts.py          Desktop / start-up shortcuts (no admin rights)
 │   ├── theme.py              Colour tokens, presets and colour maths
 │   ├── paths.py              Portable vs. per-user storage resolution
 │   ├── i18n.py               String table
@@ -280,6 +293,7 @@ CheckModApp/
 │       ├── primitives.py     Buttons, sliders, switches, ring, scrolling
 │       ├── titlebar.py       Custom window chrome
 │       ├── checkrow.py       Adherence checklist rows
+│       ├── nocontent.py      The No Content countdown strip
 │       ├── user_view.py      User Mode
 │       ├── dev_view.py       Dev Mode
 │       ├── tutorial.py       Seven-step walkthrough
