@@ -80,9 +80,31 @@ def test_targets_are_read_in_every_form_a_sheet_writes_them(text, expected):
 
 
 @pytest.mark.parametrize("text", ["", "   ", "TBC", "n/a", "-", "0:10", "9h",
-                                  "20 packages", "1:2:3:4", "-5"])
+                                  "20 packages", "1:2:3:4", "-5", "15:00:30"])
 def test_a_cell_that_is_not_a_target_is_ignored(text):
     assert sheets.parse_duration(text) is None
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("15:00:00", 900),
+    ("10:00:00", 600),
+    ("20:00:00", 1200),
+])
+def test_a_time_of_day_from_google_sheets_is_read_as_minutes(text, expected):
+    """Typing "15:00" into Sheets exports as "15:00:00".
+
+    Sheets treats it as 3 p.m. and writes all three fields. Fifteen hours is
+    not a handle time, so the value is re-read as mm:ss - otherwise a sheet
+    that looks perfectly correct to its author yields nothing at all.
+    """
+    assert sheets.parse_duration(text) == expected
+
+
+def test_a_genuine_clock_duration_is_not_reinterpreted():
+    """The fallback must only fire for values that cannot be real targets."""
+    assert sheets.parse_duration("1:15:00") == 4500      # 1 h 15 min, in range
+    assert sheets.parse_duration("0:20:00") == 1200
+    assert sheets.parse_duration("3:00:00") == 3 * 3600  # implausible, but valid
 
 
 def test_a_normal_sheet_parses():
@@ -313,3 +335,90 @@ def test_sync_pairs_a_fetched_sheet_with_the_configured_case_types(monkeypatch):
 def test_sync_reports_a_sheet_with_no_targets_in_it(monkeypatch):
     fake_opener(monkeypatch, body=b"hello,world\n")
     assert sheets.sync(SHARE_LINK, CASES) == (False, [], "no_rows")
+
+
+# ----------------------------------------------------------------------
+# The shipped template
+# ----------------------------------------------------------------------
+#: ``tests/data/aht-sheet-export.csv`` is the "AHT Targets" tab of
+#: ``docs/CheckMod-AHT-targets-template.xlsx`` exactly as Google Sheets
+#: exports it. Both files come out of one generator, so a change to the
+#: template that this parser could not read fails here.
+TEMPLATE_CSV = Path(__file__).resolve().parent / "data" / "aht-sheet-export.csv"
+
+TEMPLATE_CASES = [
+    {"id": "voice", "name": "Voice Chat", "target_s": 900},
+    {"id": "text", "name": "Text Chat", "target_s": 600},
+    {"id": "island", "name": "Island", "target_s": 1200},
+    {"id": "social", "name": "Social Overlay", "target_s": 600},
+]
+
+
+def template_payload() -> str:
+    return TEMPLATE_CSV.read_text(encoding="utf-8")
+
+
+def test_the_shipped_template_exists():
+    assert TEMPLATE_CSV.is_file(), "the template's CSV export fixture is missing"
+
+
+def test_the_template_exports_its_targets_with_the_unit_spelled_out():
+    """The target column's number format is "15 min", and Sheets exports that.
+
+    Worth pinning down: it means the export carries its own unit, so the
+    value cannot be read as seconds by anything - including a person.
+    """
+    header, first = template_payload().splitlines()[:2]
+    assert header.startswith("Package,Target AHT (minutes)")
+    assert first == "Voice Chat,15 min,Week of 2026-09-27,"
+
+
+def test_the_shipped_template_parses_to_its_three_published_targets():
+    assert sheets.parse_csv(template_payload()) == [
+        {"label": "Voice Chat", "seconds": 900},
+        {"label": "Text Chat", "seconds": 600},
+        {"label": "Island", "seconds": 1200},
+    ]
+
+
+def test_the_templates_instruction_lines_are_never_read_as_packages():
+    """The legend sits in the same column as the package names."""
+    labels = [row["label"] for row in sheets.parse_csv(template_payload())]
+    assert not any(label.lower().startswith(("how to", "1.", "2.", "3.", "4.", "see "))
+                   for label in labels)
+    assert len(labels) == 3
+
+
+def test_a_blank_target_in_the_template_leaves_that_case_type_alone():
+    """Social Overlay has no published figure yet; blank must not mean zero."""
+    rows = sheets.match_case_types(sheets.parse_csv(template_payload()),
+                                   TEMPLATE_CASES)
+    social = next(row for row in rows if row["case_id"] == "social")
+    assert social["new_s"] is None
+    assert social["changed"] is False
+
+
+def test_every_template_row_matches_a_shipped_case_type():
+    """A name in the template that the app would not recognise is a bug."""
+    rows = sheets.match_case_types(sheets.parse_csv(template_payload()),
+                                   TEMPLATE_CASES)
+    assert not [row for row in rows if row.get("unknown")]
+
+
+def test_the_template_is_understood_even_if_sheets_mangles_the_values():
+    """Same table, but with the targets typed as "15:00" instead of minutes.
+
+    Google Sheets exports those as times of day. The template asks for plain
+    minutes precisely to avoid it, but a team lead who types the clock form
+    anyway should still get the right numbers.
+    """
+    payload = template_payload()
+    for minutes in (15, 10, 20):
+        mangled = payload.replace(f",{minutes} min,", f",{minutes}:00:00,")
+        assert mangled != payload, "the fixture no longer holds the expected form"
+        payload = mangled
+    assert sheets.parse_csv(payload) == [
+        {"label": "Voice Chat", "seconds": 900},
+        {"label": "Text Chat", "seconds": 600},
+        {"label": "Island", "seconds": 1200},
+    ]

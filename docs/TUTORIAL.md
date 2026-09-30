@@ -111,9 +111,13 @@ wrong. If your team lead keeps them in a Google Sheet, CheckMod can read it.
 
 **One-time setup**
 
-1. Ask for the sheet to be shared as **"anyone with the link can view"**.
-2. Copy the link from the browser's address bar.
-3. Paste it into *Dev Mode → Data → AHT sheet → Sheet link*, press Enter.
+1. Give your team lead
+   **[CheckMod-AHT-targets-template.xlsx](CheckMod-AHT-targets-template.xlsx)** —
+   upload it to Google Drive (it opens as a Google Sheet) and it is already in
+   the shape CheckMod reads, with a "How to use" tab written for them.
+2. Ask for it to be shared as **"anyone with the link can view"**.
+3. Copy the link from the browser's address bar.
+4. Paste it into *Dev Mode → Data → AHT sheet → Sheet link*, press Enter.
 
 **Every week after that**, press **Sync targets from the sheet**. CheckMod
 reads the sheet, then shows you what it found next to what you have:
@@ -133,15 +137,30 @@ ignored — usually a sign that a package was renamed.
 row naming the columns. Anything resembling "package", "case" or "type" is
 taken as the name, and anything resembling "AHT" or "target" as the value:
 
-| Package | Target AHT |
+| Package | Target AHT (minutes) |
 |---|---|
-| Voice Chat | 15:00 |
+| Voice Chat | 15 |
 | Text Chat | 10 |
-| Island | 20 min |
-| Social Overlay | 600s |
+| Island | 20 |
+| Social Overlay | *(blank until it is published)* |
 
-`15:00`, `15`, `15 min` and `900s` all mean the same thing. Cells the sheet
-owner has not filled in yet (`TBC`, `n/a`, blank) are skipped, not guessed at.
+`15`, `15 min`, `15:00` and `900s` all mean the same thing, so a sheet that
+already exists in one of those forms needs no reformatting. Cells the sheet
+owner has not filled in yet (`TBC`, `n/a`, blank) are skipped, not guessed at
+— that package keeps the target you already have.
+
+**Plain minutes are the safest form**, which is why the template's column asks
+for them and its cell validation enforces them. Google Sheets reads a typed
+`15:00` as *three o'clock in the afternoon* and exports it as `15:00:00`.
+CheckMod recovers from that (fifteen hours is not a handle time, so it reads
+it back as fifteen minutes), but a sheet that cannot be misread in the first
+place is better than one that has to be rescued.
+
+Only two things about the sheet are fixed: the **first tab** is the one read,
+and row 1 needs a column naming the package and a column naming the target.
+Extra columns, notes, colours and filters are all ignored, and instruction
+rows below the table are skipped — a row with no duration in its target cell
+is never read as a package.
 
 **What this does and does not do.** It is one read of one sheet, when you
 press the button. Nothing about you, your machine or your cases is sent

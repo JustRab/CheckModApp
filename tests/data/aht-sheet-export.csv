@@ -1,0 +1,12 @@
+Package,Target AHT (minutes),Effective week,Notes
+Voice Chat,15 min,Week of 2026-09-27,
+Text Chat,10 min,Week of 2026-09-27,
+Island,20 min,Week of 2026-09-27,
+Social Overlay,,,Target not published yet
+,,,
+HOW TO UPDATE THIS SHEET,,,
+"1. Type the new target in the yellow column, in whole minutes (15, not 15:00).",,,
+2. Leave a cell empty if the target is not decided yet - CheckMod keeps the old one.,,,
+3. Add a row for a new package; the name must match the one in CheckMod.,,,
+"4. Do not rename the headers in row 1, and keep this tab first.",,,
+See the 'How to use' tab for sharing and for how CheckMod reads this.,,,

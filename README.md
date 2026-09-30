@@ -300,7 +300,9 @@ CheckModApp/
 │       ├── dialogs.py        Themed modals
 │       └── fonts.py          Type scale and font resolution
 ├── packaging/                PyInstaller spec, build scripts, version info
-├── tools/make_icon.py        Generates the icon from code (no image editor)
+├── tools/                    Maintainer scripts
+│   ├── make_icon.py          Generates the icon from code (no image editor)
+│   └── make_aht_sheet.py     Generates the AHT sheet template and its fixture
 ├── tests/                    Unit and interface tests
 ├── docs/                     Tutorial, privacy, customisation, build, FAQ
 └── assets/                   Generated icon
@@ -314,6 +316,7 @@ CheckModApp/
 |---|---|
 | **[docs/TUTORIAL.md](docs/TUTORIAL.md)** | Step-by-step usage guide, the same content as the in-app walkthrough plus the details it leaves out |
 | **[docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md)** | Every setting, the full `settings.json` reference, theming, and how to roll out a team-wide preset |
+| **[docs/CheckMod-AHT-targets-template.xlsx](docs/CheckMod-AHT-targets-template.xlsx)** | A ready-made targets sheet to hand to whoever publishes the week's AHT — upload to Google Drive, share for viewing, paste the link into Dev Mode |
 | **[docs/PRIVACY.md](docs/PRIVACY.md)** | The privacy and security statement, written for an IT or security reviewer |
 | **[docs/IT-APPROVAL.md](docs/IT-APPROVAL.md)** | One page to hand to IT: what it touches, why an antivirus warning may appear, and how to verify every claim |
 | **[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)** | Getting the app to colleagues while the repository stays private |

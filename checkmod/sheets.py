@@ -128,6 +128,12 @@ def parse_duration(text: str) -> Optional[int]:
     "20" means twenty minutes while one saying "1200" means the same span in
     seconds - and no team sets a two-hour-plus target per case.
 
+    ``15:00:00`` is read as fifteen *minutes*: Google Sheets turns a typed
+    "15:00" into a time of day and exports it that way, and a fifteen-hour
+    handle time is not a thing. The template in
+    ``docs/CheckMod-AHT-targets-template.xlsx`` avoids the ambiguity
+    entirely by asking for whole minutes.
+
     Returns ``None`` when the cell is empty, not a number, or outside
     :data:`MIN_SECONDS` .. :data:`MAX_SECONDS`.
     """
@@ -149,6 +155,14 @@ def parse_duration(text: str) -> Optional[int]:
         seconds = 0.0
         for value in values:                      # h:m:s, m:s, or plain
             seconds = seconds * 60.0 + value
+        if len(values) == 3 and seconds > MAX_SECONDS and values[2] == 0:
+            # Google Sheets reads a typed "15:00" as a time of day and
+            # exports it as "15:00:00". Fifteen hours is not an AHT target,
+            # so a three-field value that is out of range with an empty
+            # seconds field is re-read as mm:ss - which is what the person
+            # who typed it meant. A genuine "1:15:00" is inside the range
+            # and never reaches this branch.
+            seconds = values[0] * 60.0 + values[1]
     else:
         match = re.match(r"^([0-9]*\.?[0-9]+)\s*([a-z]*)$", raw)
         if not match:
